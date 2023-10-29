@@ -8,6 +8,8 @@
 
 #include "ir_and_trigger.h"
 
+const  char * logtag_ir = "IR";
+
 /**
  * @brief handle incoming infrared
  * This function reads the incoming infrared data and sends it via bluetooth.
@@ -15,20 +17,20 @@
  */
 void handle_ir(void *parameter)
 {
-    ESP_LOGD(logtag, "handle IR task started");
-    ESP_LOGD(logtag, "init ir recv front");
+    ESP_LOGD(logtag_ir, "handle IR task started");
+    ESP_LOGD(logtag_ir, "init ir recv front");
     ir_recv_front.setPreferred(IR_PROTOCOL);
     ir_recv_front.start(IR_RECV_FRONT_PIN);
     while (true)
     {
         if (ir_recv_front.available())
         {
-            ESP_LOGD(logtag, "IR available");
+            ESP_LOGD(logtag_ir, "IR available");
             char *rcvGroup;
             uint32_t result = ir_recv_front.read(rcvGroup);
             if (result)
             {
-                ESP_LOGD(logtag, "Received: %s/0x%x", rcvGroup, result);
+                ESP_LOGD(logtag_ir, "Received: %s/0x%x", rcvGroup, result);
                 if (device_connected)
                 {
                     ir_receive_char->setValue(result);
@@ -36,12 +38,12 @@ void handle_ir(void *parameter)
                 }
                 else if (result != ir_msg[team])
                 {
-                    ESP_LOGI(logtag, "message from other team");
+                    ESP_LOGI(logtag_ir, "message from other team");
                     vTaskResume(xHandle_handle_player_status);
                 }
                 else if (result == ir_msg[team])
                 {
-                    ESP_LOGI(logtag, "message from own team, doing nothing");
+                    ESP_LOGI(logtag_ir, "message from own team, doing nothing");
                 }
             }
         }
@@ -61,9 +63,9 @@ void handle_trigger()
 
 void refresh_trigger_status(void *parameter)
 {
-    const char *logtag = "trigger";
+    const char *logtag_ir = "trigger";
 
-    ESP_LOGD(logtag, "refresh trigger status task started");
+    ESP_LOGD(logtag_ir, "refresh trigger status task started");
     while (true)
     {
         vTaskSuspend(NULL); //suspend task until reactivated by handle_trigger()
@@ -72,15 +74,15 @@ void refresh_trigger_status(void *parameter)
             vTaskDelay(10 / portTICK_PERIOD_MS);
         //refresh trigger.pressed
         trigger.read_pin();
-        ESP_LOGI(logtag, "Button Interrupt Triggered times: %u", count_trigger_interrupts);
-        ESP_LOGI(logtag, "time in ms since last trigger: %u", xTaskGetTickCount() - last_bounce_time);
-        ESP_LOGI(logtag, "trigger status: %u", trigger.pressed);
+        ESP_LOGI(logtag_ir, "Button Interrupt Triggered times: %u", count_trigger_interrupts);
+        ESP_LOGI(logtag_ir, "time in ms since last trigger: %u", xTaskGetTickCount() - last_bounce_time);
+        ESP_LOGI(logtag_ir, "trigger status: %u", trigger.pressed);
         last_time_button_pressed_timestamp = millis();
         //Three different tagger situations are handled here. The place for doing that feels a bit weird to me, so it maybe should be refacored.
         //1: Tagger is connected via BT
         if (device_connected)
         {
-            ESP_LOGD(logtag, "sending trigger status via bt");
+            ESP_LOGD(logtag_ir, "sending trigger status via bt");
             trigger_char->setValue((int &)trigger.pressed);
             ble_notify(trigger_char);
         }
@@ -90,7 +92,7 @@ void refresh_trigger_status(void *parameter)
             team++;
             if (team >= 7)
                 team = 0;
-            ESP_LOGI(logtag, "increasing team. Team: %u", team);
+            ESP_LOGI(logtag_ir, "increasing team. Team: %u", team);
             leds[LED_INDEX_TEAM].setColorCode(color_team[team]);
             FastLED.show();
         }
@@ -99,7 +101,7 @@ void refresh_trigger_status(void *parameter)
         {
             leds[LED_INDEX_SHOOT].setColorCode(0xFFFFFF);
             FastLED.show();
-            ESP_LOGI(logtag, "Device not connected. Sending team message via IR: 0x%x", ir_msg[team]);
+            ESP_LOGI(logtag_ir, "Device not connected. Sending team message via IR: 0x%x", ir_msg[team]);
             ir_led.send(ir_msg[team]);
             leds[LED_INDEX_SHOOT].setColorCode(0);
             FastLED.show();
@@ -112,15 +114,15 @@ void refresh_trigger_status(void *parameter)
 
 void handle_player_status(void *parameter)
 {
-    ESP_LOGD(logtag, "handle player status task started");
+    ESP_LOGD(logtag_ir, "handle player status task started");
     while (true)
     {
-        ESP_LOGI(logtag, "setting player status to active");
+        ESP_LOGI(logtag_ir, "setting player status to active");
         player_is_on = true;
         leds[LED_INDEX_PLAYER_STATUS].setColorCode(COLOR_PLAYER_STATUS_ON);
         FastLED.show();
         vTaskSuspend(NULL); //suspend task until reactivated by handle_ir()
-        ESP_LOGI(logtag, "setting player status to down");
+        ESP_LOGI(logtag_ir, "setting player status to down");
         player_is_on = false;
         leds[LED_INDEX_PLAYER_STATUS].setColorCode(COLOR_PLAYER_STATUS_OFF);
         FastLED.show();

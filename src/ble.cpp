@@ -11,6 +11,8 @@
 
 bool device_connected = false;
 
+const char * logtag = "BT";
+
 class Ir_send_callbacks : public BLECharacteristicCallbacks
 {
     /**
@@ -21,8 +23,6 @@ class Ir_send_callbacks : public BLECharacteristicCallbacks
    */
     void onWrite(BLECharacteristic *ir_send_char)
     {
-        const char *logtag = "BT";
-
         std::string value = ir_send_char->getValue();
 
         if (value.length() > 0)
@@ -190,8 +190,6 @@ void init_ble()
  */
 void ble_notify(BLECharacteristic *characteristic)
 {
-    const char *logtag = "BT";
-
     if (device_connected)
     {
         ESP_LOGD(logtag, "Sending BT...");

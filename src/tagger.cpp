@@ -101,7 +101,7 @@ bool ota_flag = false;
  * This is the arduino setup function. It is run once at startup.
  * Inits are done here and RTOS tasks are started here.
  */
-void setup()
+void setup__()
 {
     const char *logtag = "setup";
     esp_log_level_set("*", ESP_LOG_DEBUG);
@@ -180,7 +180,7 @@ void setup()
  * That's why the loop task is delayed max. When OTA flag is set to active during boot, this loop is used for handling OTA.
  * 
  */
-void loop()
+void loop__()
 {
     if (ota_flag)
         handle_ota();
@@ -199,7 +199,7 @@ void create_tasks()
         "handle_ir",       /* name of task. */
         2048,              /* Stack size of task */
         NULL,              /* parameter of the task */
-        1,                 /* priority of the task */
+        2,                 /* priority of the task */
         &xHandle_handle_ir /* Task handle to keep track of created task */
     );
 

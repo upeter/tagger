@@ -1,6 +1,7 @@
 #include "ota.h"
 
-const char *logtag = "ota";
+const char * logtag_ota = "OTA";
+
 
 /**
  * @brief init ota
@@ -9,30 +10,31 @@ const char *logtag = "ota";
  * @param pw 
  * @return int 1 error, 0 success
  */
+
 int init_ota(const char *ssid, const char *pw)
 {
-    ESP_LOGI(logtag, "Init OTA");
-    ESP_LOGD(logtag, "Set WiFi mode");
+    ESP_LOGI(logtag_ota, "Init OTA");
+    ESP_LOGD(logtag_ota, "Set WiFi mode");
     WiFi.mode(WIFI_STA);
-    ESP_LOGD(logtag, "Begin WiFi");
+    ESP_LOGD(logtag_ota, "Begin WiFi");
     WiFi.begin(ssid, pw);
     unsigned long old_time = millis();
     unsigned long new_time = millis();
     while (WiFi.waitForConnectResult() != WL_CONNECTED && new_time - old_time < TIME_WAITING_FOR_CONNECTION_IN_MS)
     {
-        ESP_LOGD(lagtag, "Waiting for connection.");
+        ESP_LOGD(logtag_ota, "Waiting for connection.");
         new_time = millis();
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
     if (WiFi.waitForConnectResult() != WL_CONNECTED)
     {
-        ESP_LOGE(lagtag, "Connection Failed!");
+        ESP_LOGE(logtag_ota, "Connection Failed!");
         vTaskDelay(1000 / portTICK_PERIOD_MS);
-        ESP_LOGI(logtag, "Rebooting");
+        ESP_LOGI(logtag_ota, "Rebooting");
         esp_restart();
     }
     else
-        ESP_LOGD(lagtag, "Connection established!");
+        ESP_LOGD(logtag_ota, "Connection established!");
 
     // Port defaults to 3232
     // ArduinoOTA.setPort(3232);
@@ -56,32 +58,32 @@ int init_ota(const char *ssid, const char *pw)
                 type = "filesystem";
 
             // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-            ESP_LOGI(logtag, "Start updating %s", type);
+            ESP_LOGI(logtag_ota, "Start updating %s", type);
         })
         .onEnd([]() {
-            ESP_LOGI(logtag, "\nEnd");
+            ESP_LOGI(logtag_ota, "\nEnd");
         })
         .onProgress([](unsigned int progress, unsigned int total) {
-            ESP_LOGI(logtag, "Progress: %u%%\r", (progress / (total / 100)));
+            ESP_LOGI(logtag_ota, "Progress: %u%%\r", (progress / (total / 100)));
         })
         .onError([](ota_error_t error) {
-            ESP_LOGE(logtag, "Error[%u]: ", error);
+            ESP_LOGE(logtag_ota, "Error[%u]: ", error);
             if (error == OTA_AUTH_ERROR)
-                ESP_LOGE(logtag, "Auth Failed");
+                ESP_LOGE(logtag_ota, "Auth Failed");
             else if (error == OTA_BEGIN_ERROR)
-                ESP_LOGE(logtag, "Begin Failed");
+                ESP_LOGE(logtag_ota, "Begin Failed");
             else if (error == OTA_CONNECT_ERROR)
-                ESP_LOGE(logtag, "Connect Failed");
+                ESP_LOGE(logtag_ota, "Connect Failed");
             else if (error == OTA_RECEIVE_ERROR)
-                ESP_LOGE(logtag, "Receive Failed");
+                ESP_LOGE(logtag_ota, "Receive Failed");
             else if (error == OTA_END_ERROR)
-                ESP_LOGE(logtag, "End Failed");
+                ESP_LOGE(logtag_ota, "End Failed");
         });
-    ESP_LOGD(logtag, "Begin OTA");
+    ESP_LOGD(logtag_ota, "Begin OTA");
     ArduinoOTA.begin();
 
-    ESP_LOGI(logtag, "Ready");
-    ESP_LOGI(logtag, "IP address: %ui", WiFi.localIP());
+    ESP_LOGI(logtag_ota, "Ready");
+    ESP_LOGI(logtag_ota, "IP address: %ui", WiFi.localIP());
     return 0;
 }
 
