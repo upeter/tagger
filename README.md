@@ -1,6 +1,6 @@
 <img src="docs/images/open-lasertag-logo.svg" alt="Open Lasertag Logo" width="100"/>
 
-# Open Laser Tag
+# Open Laser Tag for my own experiments
 > because Laz00rs!
 
 An cheap and DIY open source lasertag system, build with an ESP-32. Lasertag works with infrared. The tagger is build with a infrared LED and a infrared receiver, through which the players can hit each other. This basic functionality is given by the tagger and can be tested with two or more taggers standalone. For more complex games the esp32 is paired via bluetooth with a android app (work in progress). With the android app and a internet connection it will be possible to track statistics during a game and create more complex games e.g. with GPS location data.
