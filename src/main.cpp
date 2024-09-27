@@ -90,7 +90,7 @@ IRSend ir_send(IR_RMT_TX_CHANNEL);
 Button triggerButton(trigger_pin);
 Flasher flasher(led_pin, 1000);
 uint32_t lastTriggerDebounceTime = 0;
-ESP32PWM pwm;
+
 
 //*****************************************************************************
 // Tasks
@@ -186,14 +186,6 @@ void handleIR(void *parameter)
 }
 
 
-void shootSignal() {
-	pwm.write(1000);
-	vTaskDelay(18);
-	pwm.write(3000);
-	vTaskDelay(200);
-	pwm.write(1000);
-}
-
 void handleTrigger(void *parameter){
 	ir_send.start(IR_RMT_TX_GPIO_NUM, IR_PROTOCOL);
 	int servoAngle = 0;
@@ -207,7 +199,6 @@ void handleTrigger(void *parameter){
         triggerButton.read_pin();
 		if(triggerButton.pressed) {
 			Serial.println(">>> Shot!");
-			shootSignal();
 			ir_send.send(ir_messages[0]);
 			vTaskDelay(200);
 		}
@@ -239,7 +230,6 @@ void setup() {
 	// ESP32PWM::allocateTimer(1);
 	// ESP32PWM::allocateTimer(2);
 	// ESP32PWM::allocateTimer(3);
-	pwm.attachPin(trigger_servo_pin, 50, 15); // At
 	
   
   Serial.println("Multi-task LED Demo");
