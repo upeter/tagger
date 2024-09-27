@@ -2,3 +2,5 @@ src/git_info.h
 .pio/
 .vscode/
 build/
+docker/mosquitto/log/mosquitto.log
+docker/mosquitto/passwd_file
