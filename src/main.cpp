@@ -172,6 +172,7 @@ void handleIR(void *parameter)
             Serial.println("IR available");
             char *rcvGroup;
             uint32_t result = ir_rec.read(rcvGroup);
+			Serial.printf("Received: %s/0x%x\n", rcvGroup, result);
             if (result){
 				Serial.printf("Received: %s/0x%x\n", rcvGroup, result);
 				vTaskResume(xHandle_toggleOnboardLED);
