@@ -38,12 +38,12 @@
 #define IR_RMT_RX_FRONT_CHANNEL RMT_CHANNEL_1
 #define IR_RMT_TX_CHANNEL RMT_CHANNEL_0 /*!< RMT channel for transmitter */
 #define IR_PROTOCOL "NEC"              //choose from timing groups lib/IR32/src/IR32.h
-#define IR_RMT_TX_GPIO_NUM GPIO_NUM_22 /*!< GPIO number for transmitter signal */
+#define IR_RMT_TX_GPIO_NUM GPIO_NUM_26 /*!< GPIO number for transmitter signal */
 #define IR_RECV_FRONT_PIN 27
 #define DEBOUNCE_TIME_MS 50
 
 
-#define LED_DATA_PIN 5
+#define LED_DATA_PIN 15
 #define NUM_LEDS 8
 
 // Settings
@@ -51,7 +51,7 @@ static const uint8_t buf_len = 20;
 
 // Pins
 static const int led_pin = LED_BUILTIN;
-static const int trigger_pin = 21;
+static const int trigger_pin = 25;
 static const int trigger_servo_pin = 18;
 
 // Globals
