@@ -9,18 +9,21 @@
  */
 
 // Needed for atoi()
+// #include "esp_bt_main.h"
+// #include "esp_bt_device.h"
 #include <stdlib.h>
 #include <arduino.h>
 #include "misc.h"
 // #include <FastLED.h>
 #include <EEPROM.h>
+#include <PS4Controller.h>
 #include "IR32/src/IRSend.h"
 #include "IR32/src/IRRecv.h"
 #include "soc/rtc_wdt.h" 
 #include <ESP32Servo.h>
 // #include <tagger.h>
-// #include <Adafruit_NeoPixel.h>
 #include <NeoPixelBus.h>
+#include <PS4Controller.h>
 
 
 #define LED_BUILTIN 2
@@ -100,6 +103,70 @@ uint32_t lastTriggerDebounceTime = 0;
 //Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_DATA_PIN, NEO_GRB + NEO_KHZ800);
 NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel2>> strip(NUM_LEDS, LED_DATA_PIN);
 
+unsigned long lastTimeStamp = 0;
+void notify()
+{
+	char messageString[200];
+
+	try
+	{
+		if (millis() - lastTimeStamp > 100)
+		{
+			// Only needed to print the message properly on serial monitor. Else we dont need it.
+			// sprintf(messageString, "%4d,%4d,%4d,%4d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d",
+			// 		PS4.LStickX(),
+			// 		PS4.LStickY(),
+			// 		PS4.RStickX(),
+			// 		PS4.RStickY(),
+			// 		PS4.Left(),
+			// 		PS4.Down(),
+			// 		PS4.Right(),
+			// 		PS4.Up(),
+			// 		PS4.Square(),
+			// 		PS4.Cross(),
+			// 		PS4.Circle(),
+			// 		PS4.Triangle(),
+			// 		PS4.L1(),
+			// 		PS4.R1(),
+			// 		PS4.L2(),
+			// 		PS4.R2(),
+			// 		PS4.Share(),
+			// 		PS4.Options(),
+			// 		PS4.PSButton(),
+			// 		PS4.Touchpad(),
+			// 		PS4.Charging(),
+			// 		PS4.Audio(),
+			// 		PS4.Mic(),
+			// 		PS4.Battery());
+			// Serial.println(messageString);
+			//shoot
+			if (PS4.R1() || PS4.L1())
+			{
+					Serial.println(">>> Shot!");
+					ir_send.send(ir_messages[0]);
+			}
+
+
+			lastTimeStamp = millis();
+		}
+	}
+		catch (const std::exception &e)
+		{
+			Serial.print("Exception caught: ");
+			Serial.println(e.what());
+		}
+	
+}
+
+void onConnect()
+{
+	Serial.println("Connected!.");
+}
+
+void onDisConnect()
+{
+	Serial.println("Disconnected!.");
+}
 
 
 //*****************************************************************************
@@ -181,9 +248,8 @@ void handleIR(void *parameter)
 		}
         if (ir_rec.available()){
             Serial.println("IR available");
-            char *rcvGroup;
+            char *rcvGroup = nullptr;
             uint32_t result = ir_rec.read(rcvGroup);
-			Serial.printf("Received: %s/0x%x\n", rcvGroup, result);
             if (result){
 				Serial.printf("Received: %s/0x%x\n", rcvGroup, result);
 				vTaskResume(xHandle_toggleOnboardLED);
@@ -201,8 +267,6 @@ void handleIR(void *parameter)
 
 void handleTrigger(void *parameter){
 	ir_send.start(IR_RMT_TX_GPIO_NUM, IR_PROTOCOL);
-	int servoAngle = 0;
-	bool isMin = false;
     while (true){
         //wait until the last bounce is longer ago than DEBOUNCETIME
         while (millis() - lastTriggerDebounceTime < DEBOUNCE_TIME_MS) {
@@ -258,9 +322,9 @@ void setup() {
   vTaskDelay(1000 / portTICK_PERIOD_MS);
 
  //disable watchdog - seems not to work properly...
- 	 rtc_wdt_protect_off();    // Turns off the automatic wdt service
-	rtc_wdt_enable();         // Turn it on manually
-	rtc_wdt_set_time(RTC_WDT_STAGE0, 20000);  // Define how long you desire to let dog wait.
+ 	//  rtc_wdt_protect_off();    // Turns off the automatic wdt service
+	// rtc_wdt_enable();         // Turn it on manually
+	// rtc_wdt_set_time(RTC_WDT_STAGE0, 20000);  // Define how long you desire to let dog wait.
 
 	//servo init
 	// Allow allocation of all timers
@@ -279,7 +343,7 @@ void setup() {
  	xTaskCreatePinnedToCore(
         handleIR,         /* Task function. */
         "handleIR",       /* name of task. */
-        2048,              /* Stack size of task */
+        4096,              /* Stack size of task */
         NULL,              /* parameter of the task */
         3,                 /* priority of the task */
         &xHandle_handleIR,
@@ -330,6 +394,13 @@ void setup() {
 	vTaskDelay(1000);
 	 strip.Begin();
     strip.Show();
+
+	PS4.attach(notify);
+	PS4.attachOnConnect(onConnect);
+	PS4.attachOnDisconnect(onDisConnect);
+	PS4.begin();
+
+
 	// for (int i = 0; i < NUM_LEDS; i++) {
 	// 			strip.setPixelColor(i, strip.Color(255, 255, 0)); // Red color
 	// 		}
