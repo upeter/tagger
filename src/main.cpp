@@ -54,6 +54,30 @@ static const int led_pin = LED_BUILTIN;
 static const int trigger_pin = 25;
 static const int trigger_servo_pin = 18;
 
+//Motor
+int maxSpeed = 255;
+int minSpeed = maxSpeed * -1;
+
+// Right motor
+int enableRightMotor = 22;
+int rightMotorPin1 = 16;
+int rightMotorPin2 = 17;
+// Left motor
+int enableLeftMotor = 23;
+int leftMotorPin1 = 18;
+int leftMotorPin2 = 19;
+//PWM
+const int PWMFreq = 1000; /* 1 KHz */
+const int PWMResolution = 8;
+const int rightMotorPWMSpeedChannel = 4;
+const int leftMotorPWMSpeedChannel = 5;
+//expo
+const float expo = 0.5;
+const float nullFactor = 157.0;
+const int maxX = 35;
+volatile int trimX = 0;
+
+
 // Globals
 static int led_delay = 50;   // ms
 static bool flash_led = false;
@@ -93,8 +117,62 @@ private:
   long flashDuration;
 };
 
+class Motors
+{
+
+  void setMotorDirections(int motorPin1, int motorPin2, int speed)
+  {
+    int pin1State = (speed > 0) ? HIGH : LOW;
+    int pin2State = (speed < 0) ? HIGH : LOW;
+
+    digitalWrite(motorPin1, pin1State);
+    digitalWrite(motorPin2, pin2State);
+  }
+
+public:
+  void rotateMotor(int rightMotorSpeed, int leftMotorSpeed)
+  {
+    setMotorDirections(rightMotorPin1, rightMotorPin2, rightMotorSpeed);
+    setMotorDirections(leftMotorPin1, leftMotorPin2, leftMotorSpeed);
+    ledcWrite(rightMotorPWMSpeedChannel, abs(rightMotorSpeed));
+    ledcWrite(leftMotorPWMSpeedChannel, abs(leftMotorSpeed));
+  }
+
+  void setUpPinModes()
+  {
+    pinMode(enableRightMotor, OUTPUT);
+    pinMode(rightMotorPin1, OUTPUT);
+    pinMode(rightMotorPin2, OUTPUT);
+
+    pinMode(enableLeftMotor, OUTPUT);
+    pinMode(leftMotorPin1, OUTPUT);
+    pinMode(leftMotorPin2, OUTPUT);
+
+    // Set up PWM for motor speed
+    ledcSetup(rightMotorPWMSpeedChannel, PWMFreq, PWMResolution);
+    ledcSetup(leftMotorPWMSpeedChannel, PWMFreq, PWMResolution);
+    ledcAttachPin(enableRightMotor, rightMotorPWMSpeedChannel);
+    ledcAttachPin(enableLeftMotor, leftMotorPWMSpeedChannel);
+
+    rotateMotor(0, 0);
+  }
+};
+
+float withExpo(int x)
+{
+	if(x == 0) {
+		return 1.0;
+	} else {
+		x = abs(x);
+		float n = (float(x)) / nullFactor;
+		float y = expo * pow(n, 3) + ((1.0 - expo) * n);
+		return y;
+	}
+}
+
 
 // Objects
+Motors *motors;
 IRRecv ir_rec(IR_RMT_RX_FRONT_CHANNEL);
 IRSend ir_send(IR_RMT_TX_CHANNEL);
 Button triggerButton(trigger_pin);
@@ -112,6 +190,10 @@ void notify()
 	{
 		if (millis() - lastTimeStamp > 100)
 		{
+
+			int rightMotorSpeed, leftMotorSpeed;
+      int stickY, stickX, stickXWithExpo, stickXWithExpoFloat;
+      int rightMotorSpeedRaw, leftMotorSpeedRaw;
 			// Only needed to print the message properly on serial monitor. Else we dont need it.
 			// sprintf(messageString, "%4d,%4d,%4d,%4d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d",
 			// 		PS4.LStickX(),
@@ -146,6 +228,36 @@ void notify()
 					ir_send.send(ir_messages[0]);
 			}
 
+			stickY = PS4.RStickY();
+			stickX = PS4.RStickX();
+			float stickXExpo = withExpo(stickX);
+			//stickX = (toggle ? (int)((float)stickX * stickXExpo) : stickX / 3) * -1;
+			stickXWithExpo = constrain((int)((float(stickX) * stickXExpo) + trimX) * -1, maxX * -1, maxX);
+
+			rightMotorSpeedRaw = constrain(stickY - stickXWithExpo, -127, 127);
+			leftMotorSpeedRaw = constrain(stickY + stickXWithExpo, -127, 127);
+
+			rightMotorSpeed = map(rightMotorSpeedRaw , -127, 127, minSpeed, maxSpeed); // Left stick  - y axis - forward/backward left motor movement
+			leftMotorSpeed = map(leftMotorSpeedRaw, -127, 127, minSpeed, maxSpeed);   // Right stick - y axis - forward/backward right motor movement
+
+			// Only needed to print the message properly on serial monitor. Else we dont need it.
+			// Serial.printf("StickY: %4d, StickX: %4d, right-raw: %4d, left-raw: %4d, right: %4d, left: %4d \n", stickY, stickX, rightMotorSpeedRaw, leftMotorSpeedRaw, rightMotorSpeed, leftMotorSpeed);
+
+			// original: working
+			//   rightMotorSpeed = map( PS4.RStickY(), -127, 127, -220, 220); //Left stick  - y axis - forward/backward left motor movement
+			//   leftMotorSpeed = map( PS4.LStickY(), -127, 127, -220, 220);  //Right stick - y axis - forward/backward right motor movement
+
+			rightMotorSpeed = constrain(rightMotorSpeed, minSpeed, maxSpeed);
+
+			leftMotorSpeed = constrain(leftMotorSpeed, minSpeed, maxSpeed);
+
+			//   Serial.printf("StickY: %4d, StickX: %4d, StickXExpo: %f, StickXWithExpo: %d, trimX: %d ", stickY, stickX, stickXExpo, stickXWithExpo, trimX);
+			//   Serial.printf("right-raw: %d,  left-raw: %d, right: %d, left: %d \n", rightMotorSpeedRaw, leftMotorSpeedRaw, rightMotorSpeed, leftMotorSpeed);
+
+
+        motors->rotateMotor(rightMotorSpeed, leftMotorSpeed);
+
+
 
 			lastTimeStamp = millis();
 		}
@@ -165,6 +277,7 @@ void onConnect()
 
 void onDisConnect()
 {
+	motors->rotateMotor(0, 0);
 	Serial.println("Disconnected!.");
 }
 
@@ -392,13 +505,23 @@ void setup() {
 
 
 	vTaskDelay(1000);
-	 strip.Begin();
+	strip.Begin();
     strip.Show();
 
+
+    Serial.println("Initialize motors...");
+
+    motors = new Motors();
+//    chaosMonkey = new MotorChaosMonkey(motors);
+    motors->setUpPinModes();
+    Serial.println("Motors initialized");
+
+ 	Serial.println("Initialize PS4...");
 	PS4.attach(notify);
 	PS4.attachOnConnect(onConnect);
 	PS4.attachOnDisconnect(onDisConnect);
 	PS4.begin();
+	Serial.println("PS4 initialized");
 
 
 	// for (int i = 0; i < NUM_LEDS; i++) {
