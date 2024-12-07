@@ -12,12 +12,15 @@
 #include <stdlib.h>
 #include <arduino.h>
 #include "misc.h"
-#include <FastLED.h>
+// #include <FastLED.h>
 #include <EEPROM.h>
 #include "IR32/src/IRSend.h"
 #include "IR32/src/IRRecv.h"
 #include "soc/rtc_wdt.h" 
 #include <ESP32Servo.h>
+// #include <tagger.h>
+// #include <Adafruit_NeoPixel.h>
+#include <NeoPixelBus.h>
 
 
 #define LED_BUILTIN 2
@@ -35,6 +38,10 @@
 #define IR_RMT_TX_GPIO_NUM GPIO_NUM_22 /*!< GPIO number for transmitter signal */
 #define IR_RECV_FRONT_PIN 27
 #define DEBOUNCE_TIME_MS 50
+
+
+#define LED_DATA_PIN 5
+#define NUM_LEDS 8
 
 // Settings
 static const uint8_t buf_len = 20;
@@ -90,6 +97,9 @@ IRSend ir_send(IR_RMT_TX_CHANNEL);
 Button triggerButton(trigger_pin);
 Flasher flasher(led_pin, 1000);
 uint32_t lastTriggerDebounceTime = 0;
+//Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_DATA_PIN, NEO_GRB + NEO_KHZ800);
+NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel2>> strip(NUM_LEDS, LED_DATA_PIN);
+
 
 
 //*****************************************************************************
@@ -98,7 +108,8 @@ uint32_t lastTriggerDebounceTime = 0;
 TaskHandle_t xHandle_handleIR,
     xHandle_toggleOnboardLED,
     xHandle_readSerialInput,
-	xHandle_triggerButton;
+	xHandle_triggerButton, 
+	xHandle_handleLED;
 
 
 // Task: Blink LED at rate set by global variable
@@ -176,6 +187,7 @@ void handleIR(void *parameter)
             if (result){
 				Serial.printf("Received: %s/0x%x\n", rcvGroup, result);
 				vTaskResume(xHandle_toggleOnboardLED);
+				vTaskResume(xHandle_handleLED);
             }
 			vTaskDelay(100);
         }
@@ -207,9 +219,34 @@ void handleTrigger(void *parameter){
 	}
 }
 
+void handleLED(void *parameter){
+
+	while(true) {
+		// Suspend the task
+		vTaskSuspend(NULL);
+		Serial.println(">>> ws2812fxTask!");
+        // Loop to run the LED blinking code 5 times
+        for (int j = 0; j < 5; j++) {
+			// Example: Blink LEDs
+			for (int i = 0; i < NUM_LEDS; i++) {
+				 strip.SetPixelColor(i, RgbColor(255, 0, 0)); // Red color
+			}
+			strip.Show();
+			vTaskDelay(100);
+			for (int i = 0; i < NUM_LEDS; i++) {
+				 strip.SetPixelColor(i, RgbColor(0, 0, 0)); // Turn off
+			}
+			strip.Show();
+			vTaskDelay(100);
+		}
+		Serial.println(">>> ws2812fxTask! DONE");
+	}
+}
 
 //*****************************************************************************
 // Main
+
+
 
 void setup() {
 
@@ -239,44 +276,71 @@ void setup() {
 
 
 
- 	xTaskCreate(
+ 	xTaskCreatePinnedToCore(
         handleIR,         /* Task function. */
         "handleIR",       /* name of task. */
         2048,              /* Stack size of task */
         NULL,              /* parameter of the task */
-        2,                 /* priority of the task */
-        &xHandle_handleIR /* Task handle to keep track of created task */
+        3,                 /* priority of the task */
+        &xHandle_handleIR,
+		0 /* Task handle to keep track of created task */
 		);
 
-	xTaskCreate(
+	xTaskCreatePinnedToCore(
 		handleTrigger,		   /* Task function. */
 		"handleTrigger",	   /* name of task. */
 		1024,				   /* Stack size of task */
 		NULL,				   /* parameter of the task */
-		1,					   /* priority of the task */
-		&xHandle_triggerButton /* Task handle to keep track of created task */
+		2,					   /* priority of the task */
+		&xHandle_triggerButton,
+		1 /* Task handle to keep track of created task */
 	);
 
 	// Start blink task
-	xTaskCreate(					// Use xTaskCreate() in vanilla FreeRTOS
+	xTaskCreatePinnedToCore(					// Use xTaskCreate() in vanilla FreeRTOS
 		toggleOnboardLED,			// Function to be called
 		"Toggle LED",				// Name of task
 		1024,						// Stack size (bytes in ESP32, words in FreeRTOS)
 		NULL,						// Parameter to pass
 		1,							// Task priority
-		&xHandle_toggleOnboardLED); // Task handle
+		&xHandle_toggleOnboardLED,
+		1); // Task handle
 
 	// Start serial read task
-	xTaskCreate(				   // Use xTaskCreate() in vanilla FreeRTOS
+	xTaskCreatePinnedToCore(				   // Use xTaskCreate() in vanilla FreeRTOS
 		readSerialInput,		   // Function to be called
 		"Read Serial",			   // Name of task
 		1024,					   // Stack size (bytes in ESP32, words in FreeRTOS)
 		NULL,					   // Parameter to pass
+		0,						   // Task priority (must be same to prevent lockup)
+		&xHandle_readSerialInput,
+		1); // Task handle
+
+// Start serial read task
+	xTaskCreatePinnedToCore(				   // Use xTaskCreate() in vanilla FreeRTOS
+		handleLED,		   // Function to be called
+		"handle LED",			   // Name of task
+		1024,					   // Stack size (bytes in ESP32, words in FreeRTOS)
+		NULL,					   // Parameter to pass
 		1,						   // Task priority (must be same to prevent lockup)
-		&xHandle_readSerialInput); // Task handle
+		&xHandle_handleLED,
+		1); // Task handle
+
+
+	vTaskDelay(1000);
+	 strip.Begin();
+    strip.Show();
+	// for (int i = 0; i < NUM_LEDS; i++) {
+	// 			strip.setPixelColor(i, strip.Color(255, 255, 0)); // Red color
+	// 		}
+	// 		strip.show();
+
 
 	// Delete "setup and loop" task
 	vTaskDelete(NULL);
+
+
+
 }
 
 void loop() {
