@@ -53,6 +53,7 @@ static const uint8_t buf_len = 20;
 static const int led_pin = LED_BUILTIN;
 static const int trigger_pin = 25;
 static const int trigger_servo_pin = 18;
+static const int laser_pin = 13;
 
 //Motor
 int maxSpeed = 255;
@@ -117,6 +118,34 @@ private:
   long flashDuration;
 };
 
+class Laser {
+public:
+  Laser(int laserPin) : laserPin(laserPin), active(false) {
+   pinMode(laserPin, OUTPUT);
+  }
+
+  void activate() {
+		if(!active) {
+			active = true;
+			digitalWrite(laserPin, HIGH);
+		}
+  }
+
+  void deactivate() {
+		if(active) {
+			active = false;
+			digitalWrite(laserPin, LOW);
+		}
+  }
+
+
+
+private:
+  int laserPin;
+  boolean active;
+};
+
+
 class Motors
 {
 
@@ -158,6 +187,73 @@ public:
   }
 };
 
+class MotorChaosMonkey
+{
+
+  unsigned long startMillis; // will store last time LED was updated
+  volatile boolean active = false;
+  boolean phaseOneExecuted;
+  boolean phaseTwoExecuted;
+  unsigned long chaosDurationMillis = 800;
+  unsigned long coolDownMillis = 3000;
+  Motors *motors;
+
+public:
+  MotorChaosMonkey(Motors *motors_)
+  {
+    motors = motors_;
+  }
+
+  void Start()
+  {
+     unsigned long currentMillis = millis();
+    if (!active && (currentMillis - startMillis) >= coolDownMillis)
+    {
+      active = true;
+      startMillis = millis();
+      Serial.println((String) "chaos started");
+    }
+    else
+    {
+      Serial.println((String) "chaos won't start because it is already active");
+    }
+  }
+
+  boolean isActive()
+  {
+    return active;
+  }
+
+  void Update()
+  {
+    unsigned long currentMillis = millis();
+    if (active)
+    {
+      if ((currentMillis - startMillis) >= chaosDurationMillis)
+      {
+        active = false;
+        startMillis = 0;
+        phaseOneExecuted = false;
+        phaseTwoExecuted = false;
+        Serial.println((String) "chaos terminated after: " + chaosDurationMillis);
+      }
+      else
+      {
+        if (!phaseOneExecuted)
+        {
+          motors->rotateMotor(maxSpeed, -maxSpeed);
+          phaseOneExecuted = true;
+        }
+        if (phaseOneExecuted && !phaseTwoExecuted && currentMillis - startMillis >= (chaosDurationMillis / 2))
+        {
+          motors->rotateMotor(-maxSpeed, maxSpeed);
+          phaseTwoExecuted = true;
+        }
+      }
+    }
+  }
+};
+
 float withExpo(int x)
 {
 	if(x == 0) {
@@ -172,11 +268,13 @@ float withExpo(int x)
 
 
 // Objects
+
 Motors *motors;
 IRRecv ir_rec(IR_RMT_RX_FRONT_CHANNEL);
 IRSend ir_send(IR_RMT_TX_CHANNEL);
 Button triggerButton(trigger_pin);
 Flasher flasher(led_pin, 1000);
+Laser laser(laser_pin);
 uint32_t lastTriggerDebounceTime = 0;
 //Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_DATA_PIN, NEO_GRB + NEO_KHZ800);
 NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel2>> strip(NUM_LEDS, LED_DATA_PIN);
@@ -222,7 +320,12 @@ void notify()
 			// 		PS4.Battery());
 			// Serial.println(messageString);
 			//shoot
-			if (PS4.R1() || PS4.L1())
+			if(PS4.L1()) {
+				laser.activate();
+			} else {
+				laser.deactivate();
+			}
+			if (PS4.R1())
 			{
 					Serial.println(">>> Shot!");
 					ir_send.send(ir_messages[0]);
