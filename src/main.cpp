@@ -44,7 +44,7 @@
 
 
 #define LED_DATA_PIN 15
-#define NUM_LEDS 8
+#define NUM_LEDS 68
 
 // Settings
 static const uint8_t buf_len = 20;
@@ -79,6 +79,7 @@ const int maxX = 35;
 volatile int trimX = 0;
 
 
+
 // Globals
 static int led_delay = 50;   // ms
 static bool flash_led = false;
@@ -94,6 +95,29 @@ const uint32_t ir_messages[] =
 		0xFF4AB5,
 };
 
+TaskHandle_t xHandle_handleIR,
+    xHandle_toggleOnboardLED,
+    xHandle_readSerialInput,
+	xHandle_triggerButton, 
+	xHandle_handleLED;
+const float brightness = 0.1;
+RgbColor applyBrightness(const RgbColor& color) {
+    uint8_t r = color.R * brightness;
+    uint8_t g = color.G * brightness;
+    uint8_t b = color.B * brightness;
+    return RgbColor(r, g, b);
+}
+const RgbColor WHITE = RgbColor(0, 0, 0);
+const RgbColor RED = RgbColor(255 , 0, 0);
+const RgbColor RED_LOW = applyBrightness(RED);
+const RgbColor ORANGE = RgbColor(255 , 165 , 0);
+const RgbColor ORANGE_LOW = applyBrightness(ORANGE);
+const RgbColor YELLOW = RgbColor(255, 255 , 0);
+const RgbColor YELLOW_LOW = applyBrightness(YELLOW);
+const RgbColor BLUE = RgbColor(0, 0, 255 );
+const RgbColor BLUE_LOW = applyBrightness(BLUE);
+const RgbColor GREEN = RgbColor(0, 255 , 0);
+const RgbColor GREEN_LOW = applyBrightness(GREEN);
 
 //Classes
 class Flasher {
@@ -145,6 +169,170 @@ private:
   boolean active;
 };
 
+class ActivityLights {
+
+private:
+    static const int TEAM_COLOR_START = 0;
+    static const int TEAM_COLOR_END = 50;
+    static const int HEALTH_START = 51;
+    static const int HEALTH_END = 57;
+    static const int FIRE_START = 58;
+    static const int FIRE_END = 60;
+    static const int AMMUNITION_START = 61;
+    static const int AMMUNITION_END = 68;
+	static const int LIFE_PER_LED = 4;
+	static const int SHOTS_PER_LED = 5;
+
+    NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel2>>& strip;
+    int health;
+    int ammunition;
+	int totalHealth;
+	int totalAmunication;
+	RgbColor teamColor;
+	
+	volatile bool isHitActive = false;
+	enum LedCommand {
+		NONE,
+		ALL,
+		SET_TEAM_COLOR_COLOR,
+		FIRE,
+		HIT
+	};
+	LedCommand ledCommand = NONE;
+
+	void refreshAllColors() {
+			setTeamColor();
+			updateHealth(0);
+			updateAmmunition(0);
+	}
+
+	void setTeamColor() {
+        for (int i = TEAM_COLOR_START; i <= TEAM_COLOR_END; i++) {
+            strip.SetPixelColor(i, teamColor);
+        }
+        strip.Show();
+    }
+
+    void updateHealth(int damage) {
+        health -= damage;
+        int ledsToTurnOff = (totalHealth - health) / LIFE_PER_LED;
+        for (int i = HEALTH_END; i >= HEALTH_START; i--) {
+            if (i > HEALTH_END - ledsToTurnOff) {
+                strip.SetPixelColor(i, WHITE);
+            } else {
+                strip.SetPixelColor(i, GREEN_LOW);
+            }
+        }
+        strip.Show();
+    }
+
+    void fire() {
+        for (int j = 0; j < 4; j++) {
+            for (int i = FIRE_START; i <= FIRE_END; i++) {
+                strip.SetPixelColor(i, YELLOW); 
+            }
+            strip.Show();
+            vTaskDelay(100);
+            for (int i = FIRE_START; i <= FIRE_END; i++) {
+                strip.SetPixelColor(i, WHITE); // Off
+            }
+            strip.Show();
+           vTaskDelay(100);
+        }
+        updateAmmunition(1);
+    }
+
+    void updateAmmunition(int shotsFired) {
+        ammunition -= shotsFired * SHOTS_PER_LED;
+        int ledsToTurnOff = (totalAmunication - ammunition) / 5;
+        for (int i = AMMUNITION_START; i <= AMMUNITION_END; i++) {
+            if (i < AMMUNITION_START + ledsToTurnOff) {
+                strip.SetPixelColor(i, WHITE);
+            } else {
+                strip.SetPixelColor(i, BLUE_LOW); // Blue for ammunition
+            }
+        }
+        strip.Show();
+    }
+
+    void hit() {
+        for (int j = 0; j < 5; j++) {
+            for (int i = TEAM_COLOR_START; i <= AMMUNITION_END; i++) {
+                strip.SetPixelColor(i, RED); // Red
+            }
+            strip.Show();
+            vTaskDelay(100);
+            for (int i = TEAM_COLOR_START; i <= AMMUNITION_END; i++) {
+                strip.SetPixelColor(i, WHITE); // Off
+            }
+            strip.Show();
+            vTaskDelay(100);
+        }
+		updateHealth(1);
+		isHitActive = false;
+    }
+
+
+
+public:
+    ActivityLights(NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel2>>& strip)
+        : strip(strip), health(20), ammunition(50) {
+			totalHealth = health;
+			totalAmunication = ammunition;
+			teamColor = ORANGE;
+		}
+
+	void triggerRefreshAllColors() {
+			ledCommand = ALL;
+			vTaskResume(xHandle_handleLED);
+	}
+
+	void triggerSetTeamColor(RgbColor color) {
+		teamColor = color;
+		ledCommand = SET_TEAM_COLOR_COLOR;
+		vTaskResume(xHandle_handleLED);
+	}
+
+	void triggerFire() {
+		if(!isHitActive) {
+			ledCommand = FIRE;
+			vTaskResume(xHandle_handleLED);
+		}
+	}
+
+	void triggerHit() {
+		if(!isHitActive) {
+			isHitActive = true;
+			ledCommand = HIT;
+			vTaskResume(xHandle_handleLED);
+		}
+	}
+
+  
+
+	void exectuteCommand() {
+		switch (ledCommand)
+		{
+		case SET_TEAM_COLOR_COLOR:
+			refreshAllColors();
+			break;
+		case FIRE:
+			fire();
+			refreshAllColors();
+			break;
+		case HIT:
+			hit();
+			refreshAllColors();
+			break;
+		case ALL:
+			refreshAllColors();
+			break;
+		}
+	}
+
+
+
+};
 
 class Motors
 {
@@ -269,15 +457,15 @@ float withExpo(int x)
 
 // Objects
 
+NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel2>> strip(NUM_LEDS, LED_DATA_PIN);
 Motors *motors;
 IRRecv ir_rec(IR_RMT_RX_FRONT_CHANNEL);
 IRSend ir_send(IR_RMT_TX_CHANNEL);
 Button triggerButton(trigger_pin);
 Flasher flasher(led_pin, 1000);
 Laser laser(laser_pin);
+ActivityLights lights(strip);
 uint32_t lastTriggerDebounceTime = 0;
-//Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_DATA_PIN, NEO_GRB + NEO_KHZ800);
-NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel2>> strip(NUM_LEDS, LED_DATA_PIN);
 
 unsigned long lastTimeStamp = 0;
 void notify()
@@ -322,6 +510,7 @@ void notify()
 			//shoot
 			if(PS4.L1()) {
 				laser.activate();
+				lights.triggerFire();
 			} else {
 				laser.deactivate();
 			}
@@ -388,11 +577,6 @@ void onDisConnect()
 //*****************************************************************************
 // Tasks
 
-TaskHandle_t xHandle_handleIR,
-    xHandle_toggleOnboardLED,
-    xHandle_readSerialInput,
-	xHandle_triggerButton, 
-	xHandle_handleLED;
 
 
 // Task: Blink LED at rate set by global variable
@@ -469,7 +653,8 @@ void handleIR(void *parameter)
             if (result){
 				Serial.printf("Received: %s/0x%x\n", rcvGroup, result);
 				vTaskResume(xHandle_toggleOnboardLED);
-				vTaskResume(xHandle_handleLED);
+				//vTaskResume(xHandle_handleLED);
+				lights.triggerHit();
             }
 			vTaskDelay(100);
         }
@@ -505,20 +690,21 @@ void handleLED(void *parameter){
 		// Suspend the task
 		vTaskSuspend(NULL);
 		Serial.println(">>> ws2812fxTask!");
+		lights.exectuteCommand();
         // Loop to run the LED blinking code 5 times
-        for (int j = 0; j < 5; j++) {
-			// Example: Blink LEDs
-			for (int i = 0; i < NUM_LEDS; i++) {
-				 strip.SetPixelColor(i, RgbColor(255, 0, 0)); // Red color
-			}
-			strip.Show();
-			vTaskDelay(100);
-			for (int i = 0; i < NUM_LEDS; i++) {
-				 strip.SetPixelColor(i, RgbColor(0, 0, 0)); // Turn off
-			}
-			strip.Show();
-			vTaskDelay(100);
-		}
+        // for (int j = 0; j < 5; j++) {
+		// 	// Example: Blink LEDs
+		// 	for (int i = 0; i < NUM_LEDS; i++) {
+		// 		 strip.SetPixelColor(i, RED); // Red color
+		// 	}
+		// 	strip.Show();
+		// 	vTaskDelay(100);
+		// 	for (int i = 0; i < NUM_LEDS; i++) {
+		// 		 strip.SetPixelColor(i, WHITE); // Turn off
+		// 	}
+		// 	strip.Show();
+		// 	vTaskDelay(100);
+		// }
 		Serial.println(">>> ws2812fxTask! DONE");
 	}
 }
@@ -580,7 +766,7 @@ void setup() {
 	xTaskCreatePinnedToCore(					// Use xTaskCreate() in vanilla FreeRTOS
 		toggleOnboardLED,			// Function to be called
 		"Toggle LED",				// Name of task
-		1024,						// Stack size (bytes in ESP32, words in FreeRTOS)
+		2048,						// Stack size (bytes in ESP32, words in FreeRTOS)
 		NULL,						// Parameter to pass
 		1,							// Task priority
 		&xHandle_toggleOnboardLED,
@@ -609,8 +795,9 @@ void setup() {
 
 	vTaskDelay(1000);
 	strip.Begin();
+ 	//strip.SetBrightness(128);
     strip.Show();
-
+	lights.triggerRefreshAllColors();
 
     Serial.println("Initialize motors...");
 
