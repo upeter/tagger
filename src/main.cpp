@@ -43,8 +43,8 @@
 #define DEBOUNCE_TIME_MS 50
 
 
-#define LED_DATA_PIN 15
-#define NUM_LEDS 68
+#define LED_DATA_PIN 13
+#define NUM_LEDS 67
 
 // Settings
 static const uint8_t buf_len = 20;
@@ -53,7 +53,7 @@ static const uint8_t buf_len = 20;
 static const int led_pin = LED_BUILTIN;
 static const int trigger_pin = 25;
 static const int trigger_servo_pin = 18;
-static const int laser_pin = 13;
+static const int laser_pin = 15;
 
 //Motor
 int maxSpeed = 255;
@@ -173,13 +173,13 @@ class ActivityLights {
 
 private:
     static const int TEAM_COLOR_START = 0;
-    static const int TEAM_COLOR_END = 50;
-    static const int HEALTH_START = 51;
-    static const int HEALTH_END = 57;
-    static const int FIRE_START = 58;
-    static const int FIRE_END = 60;
-    static const int AMMUNITION_START = 61;
-    static const int AMMUNITION_END = 68;
+    static const int TEAM_COLOR_END = 47;
+    static const int HEALTH_START = 48;
+    static const int HEALTH_END = 54;
+    static const int AMMUNITION_START = 59;
+    static const int AMMUNITION_END = 65;
+    static const int FIRE_START = HEALTH_START;
+    static const int FIRE_END = AMMUNITION_END;
 	static const int LIFE_PER_LED = 4;
 	static const int SHOTS_PER_LED = 5;
 
@@ -227,7 +227,7 @@ private:
     }
 
     void fire() {
-        for (int j = 0; j < 4; j++) {
+        for (int j = 0; j < 1; j++) {
             for (int i = FIRE_START; i <= FIRE_END; i++) {
                 strip.SetPixelColor(i, YELLOW); 
             }
@@ -243,8 +243,8 @@ private:
     }
 
     void updateAmmunition(int shotsFired) {
-        ammunition -= shotsFired * SHOTS_PER_LED;
-        int ledsToTurnOff = (totalAmunication - ammunition) / 5;
+        ammunition -= shotsFired;
+        int ledsToTurnOff = (totalAmunication - ammunition) / SHOTS_PER_LED;
         for (int i = AMMUNITION_START; i <= AMMUNITION_END; i++) {
             if (i < AMMUNITION_START + ledsToTurnOff) {
                 strip.SetPixelColor(i, WHITE);
@@ -508,17 +508,17 @@ void notify()
 			// 		PS4.Battery());
 			// Serial.println(messageString);
 			//shoot
-			if(PS4.L1()) {
+			if (PS4.R1() || PS4.L1()) {
 				laser.activate();
-				lights.triggerFire();
+				if(PS4.R1()) {
+					Serial.println(">>> Shot!");
+					ir_send.send(ir_messages[0]);
+					lights.triggerFire();
+				}
 			} else {
 				laser.deactivate();
 			}
-			if (PS4.R1())
-			{
-					Serial.println(">>> Shot!");
-					ir_send.send(ir_messages[0]);
-			}
+
 
 			stickY = PS4.RStickY();
 			stickX = PS4.RStickX();

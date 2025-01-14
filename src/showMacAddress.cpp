@@ -39,7 +39,7 @@ String getDeviceAddress__() {
     return addressString;
 }
 
-void setup_20() {
+void setup__10() {
   Serial.begin(115200);
   
   delay(2000); // Pause for 2 seconds
@@ -53,6 +53,6 @@ void setup_20() {
   
 }
  
-void loop_20() {
+void loop__10() {
   
 }
