@@ -38,8 +38,9 @@
 #define IR_RMT_RX_FRONT_CHANNEL RMT_CHANNEL_1
 #define IR_RMT_TX_CHANNEL RMT_CHANNEL_0 /*!< RMT channel for transmitter */
 #define IR_PROTOCOL "NEC"              //choose from timing groups lib/IR32/src/IR32.h
-#define IR_RMT_TX_GPIO_NUM GPIO_NUM_26 /*!< GPIO number for transmitter signal */
+#define IR_RMT_TX_GPIO_NUM GPIO_NUM_2 /*!< GPIO number for transmitter signal */
 #define IR_RECV_FRONT_PIN 27
+#define IR_RECV_BACK_1_PIN 26
 #define DEBOUNCE_TIME_MS 50
 
 
@@ -78,8 +79,6 @@ const float nullFactor = 157.0;
 const int maxX = 35;
 volatile int trimX = 0;
 
-
-
 // Globals
 static int led_delay = 50;   // ms
 static bool flash_led = false;
@@ -96,10 +95,11 @@ const uint32_t ir_messages[] =
 };
 
 TaskHandle_t xHandle_handleIR,
-    xHandle_toggleOnboardLED,
+	xHandle_toggleOnboardLED,
     xHandle_readSerialInput,
 	xHandle_triggerButton, 
-	xHandle_handleLED;
+	xHandle_handleLED,
+	xHandle_fire;
 const float brightness = 0.1;
 RgbColor applyBrightness(const RgbColor& color) {
     uint8_t r = color.R * brightness;
@@ -112,6 +112,9 @@ const RgbColor RED = RgbColor(255 , 0, 0);
 const RgbColor RED_LOW = applyBrightness(RED);
 const RgbColor ORANGE = RgbColor(255 , 165 , 0);
 const RgbColor ORANGE_LOW = applyBrightness(ORANGE);
+const RgbColor PINK = RgbColor(255 * 0.5, 192 * 0.5, 203 * 0.5);
+const RgbColor PINK_LOW = applyBrightness(PINK);
+
 const RgbColor YELLOW = RgbColor(255, 255 , 0);
 const RgbColor YELLOW_LOW = applyBrightness(YELLOW);
 const RgbColor BLUE = RgbColor(0, 0, 255 );
@@ -180,7 +183,6 @@ private:
     static const int AMMUNITION_END = 65;
     static const int FIRE_START = HEALTH_START;
     static const int FIRE_END = AMMUNITION_END;
-	static const int LIFE_PER_LED = 4;
 	static const int SHOTS_PER_LED = 5;
 
     NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel2>>& strip;
@@ -207,7 +209,7 @@ private:
 	}
 
 	void setTeamColor() {
-        for (int i = TEAM_COLOR_START; i <= TEAM_COLOR_END; i++) {
+        for (int i = TEAM_COLOR_START; i <= TEAM_COLOR_END; i = i+2) {
             strip.SetPixelColor(i, teamColor);
         }
         strip.Show();
@@ -215,49 +217,70 @@ private:
 
     void updateHealth(int damage) {
         health -= damage;
-        int ledsToTurnOff = (totalHealth - health) / LIFE_PER_LED;
-        for (int i = HEALTH_END; i >= HEALTH_START; i--) {
+		int healthLEDs = HEALTH_END - HEALTH_START + 1;
+		int ledsToTurnOn =  healthLEDs * health / totalHealth;
+		int ledsToTurnOff = healthLEDs - ledsToTurnOn;
+		 for (int i = HEALTH_END; i >= HEALTH_START; i--) {
             if (i > HEALTH_END - ledsToTurnOff) {
                 strip.SetPixelColor(i, WHITE);
             } else {
-                strip.SetPixelColor(i, GREEN_LOW);
+				strip.SetPixelColor(i, GREEN_LOW);
             }
         }
-        strip.Show();
-    }
+		strip.Show();
+	}
 
-    void fire() {
-        for (int j = 0; j < 1; j++) {
-            for (int i = FIRE_START; i <= FIRE_END; i++) {
-                strip.SetPixelColor(i, YELLOW); 
-            }
-            strip.Show();
-            vTaskDelay(100);
-            for (int i = FIRE_START; i <= FIRE_END; i++) {
-                strip.SetPixelColor(i, WHITE); // Off
-            }
-            strip.Show();
-           vTaskDelay(100);
-        }
-        updateAmmunition(1);
-    }
 
-    void updateAmmunition(int shotsFired) {
-        ammunition -= shotsFired;
-        int ledsToTurnOff = (totalAmunication - ammunition) / SHOTS_PER_LED;
-        for (int i = AMMUNITION_START; i <= AMMUNITION_END; i++) {
-            if (i < AMMUNITION_START + ledsToTurnOff) {
-                strip.SetPixelColor(i, WHITE);
-            } else {
-                strip.SetPixelColor(i, BLUE_LOW); // Blue for ammunition
-            }
-        }
-        strip.Show();
-    }
+	void fire() {
+		for (int j = 0; j < 1; j++) {
+			for (int i = FIRE_START; i <= FIRE_END; i++) {
+				strip.SetPixelColor(i, YELLOW); 
+			}
+			strip.Show();
+			vTaskDelay(100);
+			for (int i = FIRE_START; i <= FIRE_END; i++) {
+				strip.SetPixelColor(i, WHITE); // Off
+			}
+			strip.Show();
+		   vTaskDelay(100);
+		}
+		updateAmmunition(1);
+	}
+
+	void updateAmmunition(int shotsFired) {
+		ammunition -= shotsFired;
+		int ammoLEDs = AMMUNITION_START - AMMUNITION_END + 1;
+		int ledsToTurnOn =  ammoLEDs * ammunition / totalAmunication;
+		int ledsToTurnOff = ammoLEDs - ledsToTurnOn;
+		for (int i = AMMUNITION_START; i <= AMMUNITION_END; i++) {
+			if (i < AMMUNITION_START + ledsToTurnOff) {
+				strip.SetPixelColor(i, WHITE);
+			} else {
+				strip.SetPixelColor(i, BLUE_LOW); // Blue for ammunition
+			}
+		}
+		strip.Show();
+	}
 
     void hit() {
         for (int j = 0; j < 5; j++) {
-            for (int i = TEAM_COLOR_START; i <= AMMUNITION_END; i++) {
+            blinkRed();
+        }
+		updateHealth(1);
+		isHitActive = false;
+		if(isGameOver()) {	
+		 	gameOver();
+		}
+    }
+
+	void gameOver() {
+		while(true) {
+			blinkRed();
+		}
+	}
+
+	void blinkRed() {
+		for (int i = TEAM_COLOR_START; i <= AMMUNITION_END; i++) {
                 strip.SetPixelColor(i, RED); // Red
             }
             strip.Show();
@@ -267,16 +290,13 @@ private:
             }
             strip.Show();
             vTaskDelay(100);
-        }
-		updateHealth(1);
-		isHitActive = false;
-    }
+	}
 
 
 
 public:
     ActivityLights(NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel2>>& strip)
-        : strip(strip), health(20), ammunition(50) {
+        : strip(strip), health(6), ammunition(100) {
 			totalHealth = health;
 			totalAmunication = ammunition;
 			teamColor = ORANGE;
@@ -306,6 +326,10 @@ public:
 			ledCommand = HIT;
 			vTaskResume(xHandle_handleLED);
 		}
+	}
+
+	boolean isGameOver() {
+		return health <= 0;
 	}
 
   
@@ -395,7 +419,7 @@ public:
   void Start()
   {
      unsigned long currentMillis = millis();
-    if (!active && (currentMillis - startMillis) >= coolDownMillis)
+if (!active && (currentMillis - startMillis) >= coolDownMillis)
     {
       active = true;
       startMillis = millis();
@@ -412,7 +436,7 @@ public:
     return active;
   }
 
-  void Update()
+void Update()
   {
     unsigned long currentMillis = millis();
     if (active)
@@ -459,6 +483,7 @@ float withExpo(int x)
 
 NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel2>> strip(NUM_LEDS, LED_DATA_PIN);
 Motors *motors;
+MotorChaosMonkey *chaosMonkey;
 IRRecv ir_rec(IR_RMT_RX_FRONT_CHANNEL);
 IRSend ir_send(IR_RMT_TX_CHANNEL);
 Button triggerButton(trigger_pin);
@@ -478,8 +503,8 @@ void notify()
 		{
 
 			int rightMotorSpeed, leftMotorSpeed;
-      int stickY, stickX, stickXWithExpo, stickXWithExpoFloat;
-      int rightMotorSpeedRaw, leftMotorSpeedRaw;
+			int stickY, stickX, stickXWithExpo, stickXWithExpoFloat;
+			int rightMotorSpeedRaw, leftMotorSpeedRaw;
 			// Only needed to print the message properly on serial monitor. Else we dont need it.
 			// sprintf(messageString, "%4d,%4d,%4d,%4d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d",
 			// 		PS4.LStickX(),
@@ -508,46 +533,60 @@ void notify()
 			// 		PS4.Battery());
 			// Serial.println(messageString);
 			//shoot
-			if (PS4.R1() || PS4.L1()) {
-				laser.activate();
-				if(PS4.R1()) {
-					Serial.println(">>> Shot!");
-					ir_send.send(ir_messages[0]);
-					lights.triggerFire();
+			if(!lights.isGameOver()) {
+				if(chaosMonkey->isActive()) {
+					chaosMonkey->Update();
+				} else {
+
+					if (PS4.R1() || PS4.L1()) {
+						laser.activate();
+						if(PS4.R1()) {
+							Serial.println(">>> Shot!");
+							vTaskResume(xHandle_fire);
+						}
+					} else {
+						laser.deactivate();
+					}
+
+					if(PS4.Square()) {
+						lights.triggerSetTeamColor(PINK);
+					} else if(PS4.Cross()) {
+						lights.triggerSetTeamColor(BLUE);
+					} else if (PS4.Circle()){
+						lights.triggerSetTeamColor(ORANGE);
+					} else if (PS4.Triangle()) {
+						lights.triggerSetTeamColor(GREEN);
+					}
+
+					stickY = PS4.RStickY();// * -1;
+					stickX = PS4.RStickX();
+					float stickXExpo = withExpo(stickX);
+					//stickX = (toggle ? (int)((float)stickX * stickXExpo) : stickX / 3) * -1;
+					stickXWithExpo = constrain((int)((float(stickX) * stickXExpo) + trimX) * -1, maxX * -1, maxX);
+
+					rightMotorSpeedRaw = constrain(stickY - stickXWithExpo, -127, 127);
+					leftMotorSpeedRaw = constrain(stickY + stickXWithExpo, -127, 127);
+
+					rightMotorSpeed = map(rightMotorSpeedRaw , -127, 127, minSpeed, maxSpeed); // Left stick  - y axis - forward/backward left motor movement
+					leftMotorSpeed = map(leftMotorSpeedRaw, -127, 127, minSpeed, maxSpeed);   // Right stick - y axis - forward/backward right motor movement
+
+					// Only needed to print the message properly on serial monitor. Else we dont need it.
+					// Serial.printf("StickY: %4d, StickX: %4d, right-raw: %4d, left-raw: %4d, right: %4d, left: %4d \n", stickY, stickX, rightMotorSpeedRaw, leftMotorSpeedRaw, rightMotorSpeed, leftMotorSpeed);
+
+					// original: working
+					//   rightMotorSpeed = map( PS4.RStickY(), -127, 127, -220, 220); //Left stick  - y axis - forward/backward left motor movement
+					//   leftMotorSpeed = map( PS4.LStickY(), -127, 127, -220, 220);  //Right stick - y axis - forward/backward right motor movement
+
+					rightMotorSpeed = constrain(rightMotorSpeed, minSpeed, maxSpeed);
+
+					leftMotorSpeed = constrain(leftMotorSpeed, minSpeed, maxSpeed);
+
+					//   Serial.printf("StickY: %4d, StickX: %4d, StickXExpo: %f, StickXWithExpo: %d, trimX: %d ", stickY, stickX, stickXExpo, stickXWithExpo, trimX);
+					//   Serial.printf("right-raw: %d,  left-raw: %d, right: %d, left: %d \n", rightMotorSpeedRaw, leftMotorSpeedRaw, rightMotorSpeed, leftMotorSpeed);
+
+					motors->rotateMotor(rightMotorSpeed, leftMotorSpeed);
 				}
-			} else {
-				laser.deactivate();
 			}
-
-
-			stickY = PS4.RStickY();
-			stickX = PS4.RStickX();
-			float stickXExpo = withExpo(stickX);
-			//stickX = (toggle ? (int)((float)stickX * stickXExpo) : stickX / 3) * -1;
-			stickXWithExpo = constrain((int)((float(stickX) * stickXExpo) + trimX) * -1, maxX * -1, maxX);
-
-			rightMotorSpeedRaw = constrain(stickY - stickXWithExpo, -127, 127);
-			leftMotorSpeedRaw = constrain(stickY + stickXWithExpo, -127, 127);
-
-			rightMotorSpeed = map(rightMotorSpeedRaw , -127, 127, minSpeed, maxSpeed); // Left stick  - y axis - forward/backward left motor movement
-			leftMotorSpeed = map(leftMotorSpeedRaw, -127, 127, minSpeed, maxSpeed);   // Right stick - y axis - forward/backward right motor movement
-
-			// Only needed to print the message properly on serial monitor. Else we dont need it.
-			// Serial.printf("StickY: %4d, StickX: %4d, right-raw: %4d, left-raw: %4d, right: %4d, left: %4d \n", stickY, stickX, rightMotorSpeedRaw, leftMotorSpeedRaw, rightMotorSpeed, leftMotorSpeed);
-
-			// original: working
-			//   rightMotorSpeed = map( PS4.RStickY(), -127, 127, -220, 220); //Left stick  - y axis - forward/backward left motor movement
-			//   leftMotorSpeed = map( PS4.LStickY(), -127, 127, -220, 220);  //Right stick - y axis - forward/backward right motor movement
-
-			rightMotorSpeed = constrain(rightMotorSpeed, minSpeed, maxSpeed);
-
-			leftMotorSpeed = constrain(leftMotorSpeed, minSpeed, maxSpeed);
-
-			//   Serial.printf("StickY: %4d, StickX: %4d, StickXExpo: %f, StickXWithExpo: %d, trimX: %d ", stickY, stickX, stickXExpo, stickXWithExpo, trimX);
-			//   Serial.printf("right-raw: %d,  left-raw: %d, right: %d, left: %d \n", rightMotorSpeedRaw, leftMotorSpeedRaw, rightMotorSpeed, leftMotorSpeed);
-
-
-        motors->rotateMotor(rightMotorSpeed, leftMotorSpeed);
 
 
 
@@ -653,8 +692,8 @@ void handleIR(void *parameter)
             if (result){
 				Serial.printf("Received: %s/0x%x\n", rcvGroup, result);
 				vTaskResume(xHandle_toggleOnboardLED);
-				//vTaskResume(xHandle_handleLED);
 				lights.triggerHit();
+				chaosMonkey->Start();
             }
 			vTaskDelay(100);
         }
@@ -677,12 +716,34 @@ void handleTrigger(void *parameter){
         triggerButton.read_pin();
 		if(triggerButton.pressed) {
 			Serial.println(">>> Shot!");
+
 			ir_send.send(ir_messages[0]);
 			vTaskDelay(200);
 		}
 		lastTriggerDebounceTime = xTaskGetTickCount();
 	}
 }
+
+void handleFire(void *parameter){
+	ir_send.start(IR_RMT_TX_GPIO_NUM, IR_PROTOCOL);
+    while (true){
+		vTaskSuspend(NULL);
+			try {
+				Serial.println(">>> Shot!");
+				ir_send.send(ir_messages[0]);
+				lights.triggerFire();
+				vTaskDelay(500);
+			} catch (const std::invalid_argument& e) {
+				Serial.print("Error occurred: ");
+                Serial.println(e.what()); // Log the exception text
+				ir_send.stop();
+				ir_send.start(IR_RMT_TX_GPIO_NUM, IR_PROTOCOL);
+			}
+	}
+}
+
+			
+
 
 void handleLED(void *parameter){
 
@@ -740,8 +801,6 @@ void setup() {
   Serial.println("Enter a number in milliseconds to change the LED delay.");
 	//digitalWrite(trigger_servo_pin, LOW);
 
-
-
  	xTaskCreatePinnedToCore(
         handleIR,         /* Task function. */
         "handleIR",       /* name of task. */
@@ -752,15 +811,25 @@ void setup() {
 		0 /* Task handle to keep track of created task */
 		);
 
-	xTaskCreatePinnedToCore(
-		handleTrigger,		   /* Task function. */
-		"handleTrigger",	   /* name of task. */
-		1024,				   /* Stack size of task */
-		NULL,				   /* parameter of the task */
-		2,					   /* priority of the task */
-		&xHandle_triggerButton,
-		1 /* Task handle to keep track of created task */
-	);
+
+	// xTaskCreatePinnedToCore(
+	// 	handleTrigger,		   /* Task function. */
+	// 	"handleTrigger",	   /* name of task. */
+	// 	1024,				   /* Stack size of task */
+	// 	NULL,				   /* parameter of the task */
+	// 	2,					   /* priority of the task */
+	// 	&xHandle_triggerButton,
+	// 	1 /* Task handle to keep track of created task */
+	// );
+
+	xTaskCreatePinnedToCore(				   // Use xTaskCreate() in vanilla FreeRTOS
+		handleFire,		   // Function to be called
+		"handle fire",			   // Name of task
+		1024,					   // Stack size (bytes in ESP32, words in FreeRTOS)
+		NULL,					   // Parameter to pass
+		2,						   // Task priority (must be same to prevent lockup)
+		&xHandle_fire,
+		1); // Task handle
 
 	// Start blink task
 	xTaskCreatePinnedToCore(					// Use xTaskCreate() in vanilla FreeRTOS
@@ -793,6 +862,7 @@ void setup() {
 		1); // Task handle
 
 
+
 	vTaskDelay(1000);
 	strip.Begin();
  	//strip.SetBrightness(128);
@@ -802,7 +872,7 @@ void setup() {
     Serial.println("Initialize motors...");
 
     motors = new Motors();
-//    chaosMonkey = new MotorChaosMonkey(motors);
+   	chaosMonkey = new MotorChaosMonkey(motors);
     motors->setUpPinModes();
     Serial.println("Motors initialized");
 
