@@ -192,7 +192,7 @@ private:
 	int totalAmunication;
 	RgbColor teamColor;
 	
-	volatile bool isHitActive = false;
+	volatile long lastHitMillis = millis();
 	enum LedCommand {
 		NONE,
 		ALL,
@@ -267,7 +267,6 @@ private:
             blinkRed();
         }
 		updateHealth(1);
-		isHitActive = false;
 		if(isGameOver()) {	
 		 	gameOver();
 		}
@@ -314,19 +313,24 @@ public:
 	}
 
 	void triggerFire() {
-		if(!isHitActive) {
-			ledCommand = FIRE;
-			vTaskResume(xHandle_handleLED);
-		}
+		ledCommand = FIRE;
+		vTaskResume(xHandle_handleLED);
 	}
 
 	void triggerHit() {
-		if(!isHitActive) {
-			isHitActive = true;
-			ledCommand = HIT;
-			vTaskResume(xHandle_handleLED);
-		}
+		lastHitMillis = millis();
+		ledCommand = HIT;
+		vTaskResume(xHandle_handleLED);
 	}
+
+	boolean canBeHit() {
+		return lastHitMillis + 1000 < millis();
+	}
+
+	boolean canFire() {
+		return lastHitMillis + 600 < millis();
+	}
+
 
 	boolean isGameOver() {
 		return health <= 0;
@@ -490,6 +494,7 @@ Button triggerButton(trigger_pin);
 Flasher flasher(led_pin, 1000);
 Laser laser(laser_pin);
 ActivityLights lights(strip);
+int direction = 1;
 uint32_t lastTriggerDebounceTime = 0;
 
 unsigned long lastTimeStamp = 0;
@@ -533,7 +538,9 @@ void notify()
 			// 		PS4.Battery());
 			// Serial.println(messageString);
 			//shoot
-			if(!lights.isGameOver()) {
+			if(lights.isGameOver()) {
+				motors->rotateMotor(0, 0);
+			} else {
 				if(chaosMonkey->isActive()) {
 					chaosMonkey->Update();
 				} else {
@@ -556,9 +563,12 @@ void notify()
 						lights.triggerSetTeamColor(ORANGE);
 					} else if (PS4.Triangle()) {
 						lights.triggerSetTeamColor(GREEN);
+					} else if(PS4.Up()) {
+						direction = direction * -1;
+
 					}
 
-					stickY = PS4.RStickY();// * -1;
+					stickY = PS4.RStickY() * direction;
 					stickX = PS4.RStickX();
 					float stickXExpo = withExpo(stickX);
 					//stickX = (toggle ? (int)((float)stickX * stickXExpo) : stickX / 3) * -1;
@@ -691,11 +701,15 @@ void handleIR(void *parameter)
             uint32_t result = ir_rec.read(rcvGroup);
             if (result){
 				Serial.printf("Received: %s/0x%x\n", rcvGroup, result);
-				vTaskResume(xHandle_toggleOnboardLED);
-				lights.triggerHit();
-				chaosMonkey->Start();
-            }
-			vTaskDelay(100);
+				if(lights.canBeHit()) {
+					vTaskResume(xHandle_toggleOnboardLED);
+					lights.triggerHit();
+					chaosMonkey->Start();
+				} else {
+					Serial.println(">>> Hit cooldown");
+				}
+			}
+			vTaskDelay(200);
         }
 		 } catch (const std::invalid_argument& e) {
     			Serial.println("Error occured ");
@@ -729,10 +743,14 @@ void handleFire(void *parameter){
     while (true){
 		vTaskSuspend(NULL);
 			try {
-				Serial.println(">>> Shot!");
-				ir_send.send(ir_messages[0]);
-				lights.triggerFire();
-				vTaskDelay(500);
+				if(lights.canFire()) {
+					Serial.println(">>> Shot!");
+					ir_send.send(ir_messages[0]);
+					lights.triggerFire();
+					vTaskDelay(500);
+				} else {
+					Serial.println(">>> Shot cooldown");
+				}
 			} catch (const std::invalid_argument& e) {
 				Serial.print("Error occurred: ");
                 Serial.println(e.what()); // Log the exception text
@@ -801,6 +819,8 @@ void setup() {
   Serial.println("Enter a number in milliseconds to change the LED delay.");
 	//digitalWrite(trigger_servo_pin, LOW);
 
+	
+
  	xTaskCreatePinnedToCore(
         handleIR,         /* Task function. */
         "handleIR",       /* name of task. */
@@ -827,7 +847,7 @@ void setup() {
 		"handle fire",			   // Name of task
 		1024,					   // Stack size (bytes in ESP32, words in FreeRTOS)
 		NULL,					   // Parameter to pass
-		2,						   // Task priority (must be same to prevent lockup)
+		3,						   // Task priority (must be same to prevent lockup)
 		&xHandle_fire,
 		1); // Task handle
 
@@ -842,22 +862,22 @@ void setup() {
 		1); // Task handle
 
 	// Start serial read task
-	xTaskCreatePinnedToCore(				   // Use xTaskCreate() in vanilla FreeRTOS
-		readSerialInput,		   // Function to be called
-		"Read Serial",			   // Name of task
-		1024,					   // Stack size (bytes in ESP32, words in FreeRTOS)
-		NULL,					   // Parameter to pass
-		0,						   // Task priority (must be same to prevent lockup)
-		&xHandle_readSerialInput,
-		1); // Task handle
+	// xTaskCreatePinnedToCore(				   // Use xTaskCreate() in vanilla FreeRTOS
+	// 	readSerialInput,		   // Function to be called
+	// 	"Read Serial",			   // Name of task
+	// 	1024,					   // Stack size (bytes in ESP32, words in FreeRTOS)
+	// 	NULL,					   // Parameter to pass
+	// 	0,						   // Task priority (must be same to prevent lockup)
+	// 	&xHandle_readSerialInput,
+	// 	1); // Task handle
 
 // Start serial read task
 	xTaskCreatePinnedToCore(				   // Use xTaskCreate() in vanilla FreeRTOS
 		handleLED,		   // Function to be called
 		"handle LED",			   // Name of task
-		1024,					   // Stack size (bytes in ESP32, words in FreeRTOS)
+		2048,					   // Stack size (bytes in ESP32, words in FreeRTOS)
 		NULL,					   // Parameter to pass
-		1,						   // Task priority (must be same to prevent lockup)
+		2,						   // Task priority (must be same to prevent lockup)
 		&xHandle_handleLED,
 		1); // Task handle
 
