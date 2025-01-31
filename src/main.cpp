@@ -12,7 +12,7 @@
 // #include "esp_bt_main.h"
 // #include "esp_bt_device.h"
 #include <stdlib.h>
-#include <arduino.h>
+#include <Arduino.h>
 #include "misc.h"
 // #include <FastLED.h>
 #include <EEPROM.h>
