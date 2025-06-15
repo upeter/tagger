@@ -36,12 +36,14 @@
 #endif
 
 #define IR_RMT_RX_FRONT_CHANNEL RMT_CHANNEL_1
+#define IR_RMT_RX_BACK_CHANNEL RMT_CHANNEL_3
 #define IR_RMT_TX_CHANNEL RMT_CHANNEL_0 /*!< RMT channel for transmitter */
 #define IR_PROTOCOL "NEC"              //choose from timing groups lib/IR32/src/IR32.h
 #define IR_RMT_TX_GPIO_NUM GPIO_NUM_2 /*!< GPIO number for transmitter signal */
 #define IR_RECV_FRONT_PIN 27
 #define IR_RECV_BACK_1_PIN 26
 #define DEBOUNCE_TIME_MS 50
+#define IR_DEBOUNCE_TIME_MS 1000  // Configurable IR debounce time
 
 
 #define LED_DATA_PIN 13
@@ -95,11 +97,26 @@ const uint32_t ir_messages[] =
 };
 
 TaskHandle_t xHandle_handleIR,
+	xHandle_handleIRFront,
+	xHandle_handleIRBack,
+	xHandle_processIRQueue,
 	xHandle_toggleOnboardLED,
     xHandle_readSerialInput,
 	xHandle_triggerButton, 
 	xHandle_handleLED,
 	xHandle_fire;
+
+// IR Event Queue Structure
+struct IREvent {
+    uint32_t result;
+    char* rcvGroup;
+    uint8_t sensor; // 0 = front, 1 = back
+    unsigned long timestamp;
+};
+
+QueueHandle_t irEventQueue;
+SemaphoreHandle_t irProcessingSemaphore;
+volatile unsigned long lastIRProcessTime = 0;
 const float brightness = 0.1;
 RgbColor applyBrightness(const RgbColor& color) {
     uint8_t r = color.R * brightness;
@@ -295,7 +312,7 @@ private:
 
 public:
     ActivityLights(NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel2>>& strip)
-        : strip(strip), health(6), ammunition(100) {
+        : strip(strip), health(10), ammunition(100) {
 			totalHealth = health;
 			totalAmunication = ammunition;
 			teamColor = ORANGE;
@@ -488,7 +505,8 @@ float withExpo(int x)
 NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel2>> strip(NUM_LEDS, LED_DATA_PIN);
 Motors *motors;
 MotorChaosMonkey *chaosMonkey;
-IRRecv ir_rec(IR_RMT_RX_FRONT_CHANNEL);
+IRRecv ir_rec_front(IR_RMT_RX_FRONT_CHANNEL);
+IRRecv ir_rec_back(IR_RMT_RX_BACK_CHANNEL);
 IRSend ir_send(IR_RMT_TX_CHANNEL);
 Button triggerButton(trigger_pin);
 Flasher flasher(led_pin, 1000);
@@ -672,50 +690,131 @@ void readSerialInput(void *parameters) {
 }
 
 /**
- * @brief handle incoming infrared
- * This function reads the incoming infrared data and sends it via bluetooth.
+ * @brief Central IR processing task
+ * This function processes IR events from the queue with debouncing
  * @param parameter just a dummy parameter
  */
-void handleIR(void *parameter)
+void processIRQueue(void *parameter)
 {
-    Serial.println("handle IR task started");
-    Serial.println("init ir rec");
-    ir_rec.setPreferred(IR_PROTOCOL);
-    ir_rec.start(IR_RECV_FRONT_PIN);
-	Serial.println("init ir rec init");
-	uint32_t counter = 0;
-	uint32_t last = millis();
-    while (true){
-		try {
-		// taskYIELD();
-		counter++;
-		if((millis() - last) > 1000) {
-			rtc_wdt_feed();		
-			//Serial.println("available: " + (String)counter);
-			vTaskDelay(50);
-			last = millis();
-		}
-        if (ir_rec.available()){
-            Serial.println("IR available");
-            char *rcvGroup = nullptr;
-            uint32_t result = ir_rec.read(rcvGroup);
-            if (result){
-				Serial.printf("Received: %s/0x%x\n", rcvGroup, result);
-				if(lights.canBeHit()) {
-					vTaskResume(xHandle_toggleOnboardLED);
-					lights.triggerHit();
-					chaosMonkey->Start();
-				} else {
-					Serial.println(">>> Hit cooldown");
-				}
-			}
-			vTaskDelay(200);
+    Serial.println("IR processing task started");
+    IREvent event;
+    
+    while (true) {
+        // Wait for an IR event in the queue
+        if (xQueueReceive(irEventQueue, &event, portMAX_DELAY)) {
+            // Take semaphore to ensure only one IR signal is processed at a time
+            if (xSemaphoreTake(irProcessingSemaphore, pdMS_TO_TICKS(100))) {
+                // Check debounce timing
+                unsigned long currentTime = millis();
+                if (currentTime - lastIRProcessTime >= IR_DEBOUNCE_TIME_MS) {
+                    Serial.printf("Processing IR from sensor %d: %s/0x%x\n", 
+                                event.sensor, event.rcvGroup, event.result);
+                    
+                    if (lights.canBeHit()) {
+                        vTaskResume(xHandle_toggleOnboardLED);
+                        lights.triggerHit();
+                        chaosMonkey->Start();
+                        lastIRProcessTime = currentTime;
+                    } else {
+                        Serial.println(">>> Hit cooldown");
+                    }
+                } else {
+                    Serial.printf(">>> IR signal dropped (debounce): sensor %d, time since last: %lu ms\n", 
+                                event.sensor, currentTime - lastIRProcessTime);
+                }
+                
+                xSemaphoreGive(irProcessingSemaphore);
+            }
         }
-		 } catch (const std::invalid_argument& e) {
-    			Serial.println("Error occured ");
-  		}
-	}
-    return;
+    }
+}
+
+// Structure to pass IR sensor configuration to generic handler
+struct IRSensorConfig {
+    IRRecv* receiver;
+    uint8_t pin;
+    uint8_t sensorId;
+    const char* sensorName;
+};
+
+/**
+ * @brief Generic IR sensor handler
+ * This function reads incoming infrared data and queues it for processing
+ * @param parameter IRSensorConfig* containing sensor configuration
+ */
+void handleIRSensor(void *parameter)
+{
+    IRSensorConfig* config = (IRSensorConfig*)parameter;
+    
+    Serial.printf("handle IR %s task started\n", config->sensorName);
+    Serial.printf("init ir rec %s\n", config->sensorName);
+    config->receiver->setPreferred(IR_PROTOCOL);
+    config->receiver->start(config->pin);
+    Serial.printf("init ir rec %s complete\n", config->sensorName);
+    
+    uint32_t counter = 0;
+    uint32_t last = millis();
+    
+    while (true) {
+        try {
+            counter++;
+            if ((millis() - last) > 1000) {
+                rtc_wdt_feed();
+                vTaskDelay(50);
+                last = millis();
+            }
+            
+            if (config->receiver->available()) {
+                Serial.printf("IR %s available\n", config->sensorName);
+                char *rcvGroup = nullptr;
+                uint32_t result = config->receiver->read(rcvGroup);
+                
+                if (result) {
+                    IREvent event;
+                    event.result = result;
+                    event.rcvGroup = rcvGroup;
+                    event.sensor = config->sensorId;
+                    event.timestamp = millis();
+                    
+                    // Try to queue the event (non-blocking)
+                    if (xQueueSend(irEventQueue, &event, 0) != pdTRUE) {
+                        Serial.printf(">>> IR queue full, dropping %s sensor event\n", config->sensorName);
+                    }
+                }
+                vTaskDelay(200);
+            }
+        } catch (const std::invalid_argument& e) {
+            Serial.printf("Error occurred in %s IR handler\n", config->sensorName);
+        }
+    }
+}
+
+/**
+ * @brief Wrapper for front IR sensor
+ */
+void handleIRFront(void *parameter)
+{
+    static IRSensorConfig frontConfig = {
+        &ir_rec_front,
+        IR_RECV_FRONT_PIN,
+        0,
+        "Front"
+    };
+    handleIRSensor(&frontConfig);
+}
+
+/**
+ * @brief Wrapper for back IR sensor
+ */
+void handleIRBack(void *parameter)
+{
+    static IRSensorConfig backConfig = {
+        &ir_rec_back,
+        IR_RECV_BACK_1_PIN,
+        1,
+        "Back"
+    };
+    handleIRSensor(&backConfig);
 }
 
 
@@ -819,17 +918,47 @@ void setup() {
   Serial.println("Enter a number in milliseconds to change the LED delay.");
 	//digitalWrite(trigger_servo_pin, LOW);
 
+	// Create IR event queue and semaphore
+	irEventQueue = xQueueCreate(10, sizeof(IREvent)); // Queue for 10 IR events
+	irProcessingSemaphore = xSemaphoreCreateMutex();
 	
+	if (irEventQueue == NULL || irProcessingSemaphore == NULL) {
+		Serial.println("Failed to create IR queue or semaphore!");
+		return;
+	}
 
- 	xTaskCreatePinnedToCore(
-        handleIR,         /* Task function. */
-        "handleIR",       /* name of task. */
-        4096,              /* Stack size of task */
-        NULL,              /* parameter of the task */
-        3,                 /* priority of the task */
-        &xHandle_handleIR,
+	// Create IR processing task
+	xTaskCreatePinnedToCore(
+		processIRQueue,    /* Task function. */
+		"processIRQueue",  /* name of task. */
+		4096,              /* Stack size of task */
+		NULL,              /* parameter of the task */
+		3,                 /* priority of the task */
+		&xHandle_processIRQueue,
 		0 /* Task handle to keep track of created task */
-		);
+	);
+
+	// Create front IR sensor task
+	xTaskCreatePinnedToCore(
+		handleIRFront,     /* Task function. */
+		"handleIRFront",   /* name of task. */
+		4096,              /* Stack size of task */
+		NULL,              /* parameter of the task */
+		2,                 /* priority of the task */
+		&xHandle_handleIRFront,
+		0 /* Task handle to keep track of created task */
+	);
+
+	// Create back IR sensor task
+	xTaskCreatePinnedToCore(
+		handleIRBack,      /* Task function. */
+		"handleIRBack",    /* name of task. */
+		4096,              /* Stack size of task */
+		NULL,              /* parameter of the task */
+		2,                 /* priority of the task */
+		&xHandle_handleIRBack,
+		1 /* Task handle to keep track of created task */
+	);
 
 
 	// xTaskCreatePinnedToCore(
