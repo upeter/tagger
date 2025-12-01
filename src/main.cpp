@@ -35,9 +35,9 @@
   static const BaseType_t app_cpu = 1;
 #endif
 
-#define IR_RMT_RX_FRONT_CHANNEL RMT_CHANNEL_1
-#define IR_RMT_RX_BACK_CHANNEL RMT_CHANNEL_3
-#define IR_RMT_TX_CHANNEL RMT_CHANNEL_0 /*!< RMT channel for transmitter */
+#define IR_RMT_RX_FRONT_CHANNEL RMT_CHANNEL_0
+#define IR_RMT_RX_BACK_CHANNEL RMT_CHANNEL_1
+#define IR_RMT_TX_CHANNEL RMT_CHANNEL_2 /*!< RMT channel for transmitter */
 #define IR_PROTOCOL "NEC"              //choose from timing groups lib/IR32/src/IR32.h
 #define IR_RMT_TX_GPIO_NUM GPIO_NUM_2 /*!< GPIO number for transmitter signal */
 #define IR_RECV_FRONT_PIN 27
@@ -202,7 +202,7 @@ private:
     static const int FIRE_END = AMMUNITION_END;
 	static const int SHOTS_PER_LED = 5;
 
-    NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel2>>& strip;
+    NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel3>>& strip;
     int health;
     int ammunition;
 	int totalHealth;
@@ -311,7 +311,7 @@ private:
 
 
 public:
-    ActivityLights(NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel2>>& strip)
+    ActivityLights(NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel3>>& strip)
         : strip(strip), health(10), ammunition(100) {
 			totalHealth = health;
 			totalAmunication = ammunition;
@@ -502,7 +502,7 @@ float withExpo(int x)
 
 // Objects
 
-NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel2>> strip(NUM_LEDS, LED_DATA_PIN);
+NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel3>> strip(NUM_LEDS, LED_DATA_PIN);
 Motors *motors;
 MotorChaosMonkey *chaosMonkey;
 IRRecv ir_rec_front(IR_RMT_RX_FRONT_CHANNEL);
