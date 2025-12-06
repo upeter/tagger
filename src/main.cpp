@@ -330,6 +330,9 @@ public:
 	}
 
 	void triggerFire() {
+		 if (ledCommand == HIT) {
+            return; // drop fire; hit has priority
+        }
 		ledCommand = FIRE;
 		vTaskResume(xHandle_handleLED);
 	}
