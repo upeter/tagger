@@ -201,6 +201,7 @@ private:
     static const int FIRE_START = HEALTH_START;
     static const int FIRE_END = AMMUNITION_END;
 	static const int SHOTS_PER_LED = 5;
+	static const unsigned long INVULNERABILITY_DURATION_MS = 3000;
 
     NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel3>>& strip;
     int health;
@@ -208,6 +209,7 @@ private:
 	int totalHealth;
 	int totalAmunication;
 	RgbColor teamColor;
+	
 	
 	volatile long lastHitMillis = millis();
 	enum LedCommand {
@@ -225,9 +227,37 @@ private:
 			updateAmmunition(0);
 	}
 
+	void showTeamColorCarousel() {
+		// if invulnerability is over, just show normal colors
+		if (canBeHit()) {
+			refreshAllColors();
+			return;
+		}
+
+		static uint8_t offset = 0;
+		int length = TEAM_COLOR_END - TEAM_COLOR_START + 1;
+
+		for (int i = TEAM_COLOR_START; i <= TEAM_COLOR_END; i++) {
+			// Create a moving even/odd pattern across the whole team strip
+			// Example: step 0 -> even=teamColor, odd=black; step 1 -> odd=teamColor, even=black; etc.
+			int logicalIndex = (i - TEAM_COLOR_START + offset) % length;
+			if (logicalIndex % 2 == 0) {
+				strip.SetPixelColor(i, teamColor);
+			} else {
+				strip.SetPixelColor(i, WHITE);
+			}
+		}
+		strip.Show();
+		offset = (offset + 1) % length;
+	}
+
 	void setTeamColor() {
-        for (int i = TEAM_COLOR_START; i <= TEAM_COLOR_END; i = i+2) {
-            strip.SetPixelColor(i, teamColor);
+        for (int i = TEAM_COLOR_START; i <= TEAM_COLOR_END; i++) {
+            if(i % 2 == 0) {
+				strip.SetPixelColor(i, teamColor);
+			} else {
+				strip.SetPixelColor(i, WHITE);
+			}
         }
         strip.Show();
     }
@@ -287,6 +317,15 @@ private:
 		if(isGameOver()) {	
 		 	gameOver();
 		}
+
+		// after hit: show carousel while tank is invulnerable
+		unsigned long start = millis();
+		while (!canBeHit() && (millis() - start) < INVULNERABILITY_DURATION_MS) {
+			showTeamColorCarousel();
+			vTaskDelay(100 / portTICK_PERIOD_MS);
+		}
+		triggerRefreshAllColors();
+		
     }
 
 	void gameOver() {
@@ -344,11 +383,13 @@ public:
 	}
 
 	boolean canBeHit() {
-		return lastHitMillis + 1000 < millis();
+		return lastHitMillis + INVULNERABILITY_DURATION_MS < millis();
 	}
 
 	boolean canFire() {
-		return lastHitMillis + 600 < millis();
+		//return lastHitMillis + 600 < millis();
+		// allow firing even during invulnerability period
+		return true;
 	}
 
 
