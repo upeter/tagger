@@ -16,8 +16,10 @@ static Prefs emptyPrefs() {
     Prefs p;
     p.color = RgbColor(0, 0, 0);
     p.direction = 1;
+    p.joystickMode = 1; // default to one-stick mode
     p.hasColor = false;
     p.hasDirection = false;
+    p.hasJoystickMode = false;
     return p;
 }
 
@@ -42,7 +44,13 @@ Prefs prefsLoad() {
     p.direction = (encodedDir == 0) ? -1 : 1;
     p.hasDirection = true;
 
-    Serial.printf("Restored prefs: R=%u G=%u B=%u, dir=%d\n", p.color.R, p.color.G, p.color.B, p.direction);
+    uint8_t storedMode = EEPROM.read(EEPROM_ADDR_JOYSTICK_MODE);
+    if (storedMode == 1 || storedMode == 2) {
+        p.joystickMode = storedMode;
+        p.hasJoystickMode = true;
+    }
+
+    Serial.printf("Restored prefs: R=%u G=%u B=%u, dir=%d, mode=%u\n", p.color.R, p.color.G, p.color.B, p.direction, p.joystickMode);
     return p;
 }
 
@@ -74,5 +82,20 @@ Prefs prefsWithDirection(const Prefs &base, int direction) {
     Prefs p = base;
     p.direction = direction;
     p.hasDirection = true;
+    return p;
+}
+
+Prefs prefsWithJoystickMode(const Prefs &base, uint8_t joystickMode) {
+    prefsInit();
+    if (prefsInitialized) {
+        uint8_t encoded = (joystickMode == 2) ? 2 : 1; // default to 1-stick if invalid
+        EEPROM.write(EEPROM_ADDR_JOYSTICK_MODE, encoded);
+        EEPROM.write(EEPROM_ADDR_MAGIC_PREFERENCES, EEPROM_MAGIC_PREFERENCES);
+        EEPROM.commit();
+    }
+
+    Prefs p = base;
+    p.joystickMode = (joystickMode == 2) ? 2 : 1;
+    p.hasJoystickMode = true;
     return p;
 }

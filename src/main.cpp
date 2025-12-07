@@ -563,6 +563,11 @@ const unsigned long DIRECTION_DEBOUNCE_MS = 500; // tweak as needed
 Prefs currentPrefs;
 uint32_t lastTriggerDebounceTime = 0;
 
+// Joystick mode: 1 = one-stick (current behavior), 2 = two-stick
+uint8_t joystickMode = 1;
+unsigned long lastJoystickModeToggleMillis = 0;
+const unsigned long JOYSTICK_MODE_DEBOUNCE_MS = 500;
+
 unsigned long lastTimeStamp = 0;
 void notify()
 {
@@ -636,10 +641,34 @@ void notify()
 							currentPrefs = prefsWithDirection(currentPrefs, direction);
 							lastDirectionToggleMillis = now;
 						}
+					} else if (PS4.Left()) {
+						unsigned long now = millis();
+						if (now - lastJoystickModeToggleMillis > JOYSTICK_MODE_DEBOUNCE_MS) {
+							joystickMode = 2; // two-stick mode
+							currentPrefs = prefsWithJoystickMode(currentPrefs, joystickMode);
+							Serial.println("Joystick mode set to TWO-STICK (PS.Left)");
+							lastJoystickModeToggleMillis = now;
+						}
+					} else if (PS4.Right()) {
+						unsigned long now = millis();
+						if (now - lastJoystickModeToggleMillis > JOYSTICK_MODE_DEBOUNCE_MS) {
+							joystickMode = 1; // one-stick mode
+							currentPrefs = prefsWithJoystickMode(currentPrefs, joystickMode);
+							Serial.println("Joystick mode set to ONE-STICK (PS.Right)");
+							lastJoystickModeToggleMillis = now;
+						}
 					}
 
-					stickY = PS4.RStickY() * direction;
-					stickX = PS4.RStickX();
+					// Joystick mapping depending on mode
+					if (joystickMode == 2) {
+						// Two-stick: right Y for forward/back, left X for turning
+						stickY = PS4.RStickY() * direction;
+						stickX = PS4.LStickX();
+					} else {
+						// One-stick: right stick controls both as before
+						stickY = PS4.RStickY() * direction;
+						stickX = PS4.RStickX();
+					}
 					float stickXExpo = withExpo(stickX);
 					//stickX = (toggle ? (int)((float)stickX * stickXExpo) : stickX / 3) * -1;
 					stickXWithExpo = constrain((int)((float(stickX) * stickXExpo) + trimX) * -1, maxX * -1, maxX);
@@ -1075,6 +1104,9 @@ void setup() {
 	}
 	if (currentPrefs.hasDirection) {
 		direction = currentPrefs.direction;
+	}
+	if (currentPrefs.hasJoystickMode) {
+		joystickMode = currentPrefs.joystickMode;
 	}
 	lights.triggerRefreshAllColors();
 
