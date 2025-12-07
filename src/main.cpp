@@ -98,6 +98,24 @@ const uint32_t ir_messages[] =
 		0xFF4AB5,
 };
 
+int direction = 1;
+unsigned long lastDirectionToggleMillis = 0;
+const unsigned long DIRECTION_DEBOUNCE_MS = 500; // tweak as needed
+Prefs currentPrefs;
+uint32_t lastTriggerDebounceTime = 0;
+
+// Joystick mode: 1 = one-stick (current behavior), 2 = two-stick
+uint8_t joystickMode = 1;
+unsigned long lastJoystickModeToggleMillis = 0;
+const unsigned long JOYSTICK_MODE_DEBOUNCE_MS = 500;
+
+// Debounce for in-game prefs reset (L2+R2)
+unsigned long lastPrefsResetMillis = 0;
+const unsigned long PREFS_RESET_DEBOUNCE_MS = 2000;
+
+unsigned long lastTimeStamp = 0;
+
+
 TaskHandle_t xHandle_handleIR,
 	xHandle_handleIRFront,
 	xHandle_handleIRBack,
@@ -538,22 +556,6 @@ Button triggerButton(trigger_pin);
 Flasher flasher(led_pin, 1000);
 Laser laser(laser_pin);
 ActivityLights lights(strip);
-int direction = 1;
-unsigned long lastDirectionToggleMillis = 0;
-const unsigned long DIRECTION_DEBOUNCE_MS = 500; // tweak as needed
-Prefs currentPrefs;
-uint32_t lastTriggerDebounceTime = 0;
-
-// Joystick mode: 1 = one-stick (current behavior), 2 = two-stick
-uint8_t joystickMode = 1;
-unsigned long lastJoystickModeToggleMillis = 0;
-const unsigned long JOYSTICK_MODE_DEBOUNCE_MS = 500;
-
-// Debounce for in-game prefs reset (L2+R2)
-unsigned long lastPrefsResetMillis = 0;
-const unsigned long PREFS_RESET_DEBOUNCE_MS = 2000;
-
-unsigned long lastTimeStamp = 0;
 void notify()
 {
 	char messageString[200];
