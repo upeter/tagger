@@ -558,6 +558,8 @@ Flasher flasher(led_pin, 1000);
 Laser laser(laser_pin);
 ActivityLights lights(strip);
 int direction = 1;
+unsigned long lastDirectionToggleMillis = 0;
+const unsigned long DIRECTION_DEBOUNCE_MS = 500; // tweak as needed
 Prefs currentPrefs;
 uint32_t lastTriggerDebounceTime = 0;
 
@@ -628,9 +630,12 @@ void notify()
 					} else if (PS4.Triangle()) {
 						lights.triggerSetTeamColor(GREEN);
 					} else if(PS4.Up()) {
-						direction = direction * -1;
-						currentPrefs = prefsWithDirection(currentPrefs, direction);
-
+						unsigned long now = millis();
+						if (now - lastDirectionToggleMillis > DIRECTION_DEBOUNCE_MS) {
+							direction = direction * -1;
+							currentPrefs = prefsWithDirection(currentPrefs, direction);
+							lastDirectionToggleMillis = now;
+						}
 					}
 
 					stickY = PS4.RStickY() * direction;
