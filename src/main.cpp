@@ -662,16 +662,32 @@ void notify()
 					// Joystick mapping depending on mode
 					if (joystickMode == 2) {
 						// Two-stick: right Y for forward/back, left X for turning
-						stickY = PS4.RStickY() * direction;
-						stickX = PS4.LStickX();
+						// Use left Y for in-place spins when no forward/back input
+						int rawY = PS4.RStickY() * direction;
+						int rawTurn = PS4.LStickX();
+						int rawSpin = PS4.LStickY();
+						if (abs(rawY) < 10 && abs(rawTurn) < 10) {
+							// If user only uses left Y, treat it as in-place rotation
+							stickY = 0;
+							stickX = rawSpin;
+						} else {
+							stickY = rawY;
+							stickX = rawTurn;
+						}
 					} else {
 						// One-stick: right stick controls both as before
 						stickY = PS4.RStickY() * direction;
 						stickX = PS4.RStickX();
 					}
 					float stickXExpo = withExpo(stickX);
+					// Increase rotational authority so sharp turns are possible even at high speed
+					const float turnGain = 5.0; // adjust if needed after testing
 					//stickX = (toggle ? (int)((float)stickX * stickXExpo) : stickX / 3) * -1;
-					stickXWithExpo = constrain((int)((float(stickX) * stickXExpo) + trimX) * -1, maxX * -1, maxX);
+					stickXWithExpo = constrain(
+						(int)(((float(stickX) * stickXExpo) * turnGain + trimX) * -1),
+						maxX * -1,
+						maxX
+					);
 
 					rightMotorSpeedRaw = constrain(stickY - stickXWithExpo, -127, 127);
 					leftMotorSpeedRaw = constrain(stickY + stickXWithExpo, -127, 127);
