@@ -24,6 +24,7 @@
 // #include <tagger.h>
 #include <NeoPixelBus.h>
 #include <PS4Controller.h>
+#include "prefs.h"
 
 
 #define LED_BUILTIN 2
@@ -557,6 +558,7 @@ Flasher flasher(led_pin, 1000);
 Laser laser(laser_pin);
 ActivityLights lights(strip);
 int direction = 1;
+Prefs currentPrefs;
 uint32_t lastTriggerDebounceTime = 0;
 
 unsigned long lastTimeStamp = 0;
@@ -627,6 +629,7 @@ void notify()
 						lights.triggerSetTeamColor(GREEN);
 					} else if(PS4.Up()) {
 						direction = direction * -1;
+						currentPrefs = prefsWithDirection(currentPrefs, direction);
 
 					}
 
@@ -1060,6 +1063,14 @@ void setup() {
 	strip.Begin();
  	//strip.SetBrightness(128);
     strip.Show();
+	// Load user preferences (team color + direction)
+	currentPrefs = prefsLoad();
+	if (currentPrefs.hasColor) {
+		lights.triggerSetTeamColor(currentPrefs.color);
+	}
+	if (currentPrefs.hasDirection) {
+		direction = currentPrefs.direction;
+	}
 	lights.triggerRefreshAllColors();
 
     Serial.println("Initialize motors...");
@@ -1075,13 +1086,6 @@ void setup() {
 	PS4.attachOnDisconnect(onDisConnect);
 	PS4.begin();
 	Serial.println("PS4 initialized");
-
-
-	// for (int i = 0; i < NUM_LEDS; i++) {
-	// 			strip.setPixelColor(i, strip.Color(255, 255, 0)); // Red color
-	// 		}
-	// 		strip.show();
-
 
 	// Delete "setup and loop" task
 	vTaskDelete(NULL);
