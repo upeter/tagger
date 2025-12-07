@@ -1,5 +1,6 @@
 #include "prefs.h"
 #include <NeoPixelBus.h>
+#include "colors.h"
 
 static bool prefsInitialized = false;
 
@@ -14,7 +15,8 @@ void prefsInit() {
 
 static Prefs emptyPrefs() {
     Prefs p;
-    p.color = RgbColor(0, 0, 0);
+    // Default team color: dimmed orange
+    p.color = COLOR_ORANGE_LOW;
     p.direction = 1;
     p.joystickMode = 1; // default to one-stick mode
     p.hasColor = false;
@@ -98,4 +100,16 @@ Prefs prefsWithJoystickMode(const Prefs &base, uint8_t joystickMode) {
     p.joystickMode = (joystickMode == 2) ? 2 : 1;
     p.hasJoystickMode = true;
     return p;
+}
+
+void prefsClearAll() {
+    prefsInit();
+    if (!prefsInitialized) return;
+
+    for (int i = 0; i < EEPROM_SIZE_PREFERENCES; ++i) {
+        EEPROM.write(i, 0xFF);
+    }
+    EEPROM.commit();
+
+    Serial.println("All user preferences cleared from EEPROM");
 }

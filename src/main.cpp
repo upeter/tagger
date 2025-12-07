@@ -25,6 +25,7 @@
 #include <NeoPixelBus.h>
 #include <PS4Controller.h>
 #include "prefs.h"
+#include "colors.h"
 
 
 #define LED_BUILTIN 2
@@ -118,27 +119,7 @@ struct IREvent {
 QueueHandle_t irEventQueue;
 SemaphoreHandle_t irProcessingSemaphore;
 volatile unsigned long lastIRProcessTime = 0;
-const float brightness = 0.1;
-RgbColor applyBrightness(const RgbColor& color) {
-    uint8_t r = color.R * brightness;
-    uint8_t g = color.G * brightness;
-    uint8_t b = color.B * brightness;
-    return RgbColor(r, g, b);
-}
-const RgbColor WHITE = RgbColor(0, 0, 0);
-const RgbColor RED = RgbColor(255 , 0, 0);
-const RgbColor RED_LOW = applyBrightness(RED);
-const RgbColor ORANGE = RgbColor(255 , 165 , 0);
-const RgbColor ORANGE_LOW = applyBrightness(ORANGE);
-const RgbColor PINK = RgbColor(255 * 0.5, 192 * 0.5, 203 * 0.5);
-const RgbColor PINK_LOW = applyBrightness(PINK);
-
-const RgbColor YELLOW = RgbColor(255, 255 , 0);
-const RgbColor YELLOW_LOW = applyBrightness(YELLOW);
-const RgbColor BLUE = RgbColor(0, 0, 255 );
-const RgbColor BLUE_LOW = applyBrightness(BLUE);
-const RgbColor GREEN = RgbColor(0, 255 , 0);
-const RgbColor GREEN_LOW = applyBrightness(GREEN);
+// Color definitions moved to colors.{h,cpp}
 
 //Classes
 class Flasher {
@@ -245,7 +226,7 @@ private:
 			if (logicalIndex % 2 == 0) {
 				strip.SetPixelColor(i, teamColor);
 			} else {
-				strip.SetPixelColor(i, WHITE);
+				strip.SetPixelColor(i, COLOR_WHITE);
 			}
 		}
 		strip.Show();
@@ -253,11 +234,11 @@ private:
 	}
 
 	void setTeamColor() {
-        for (int i = TEAM_COLOR_START; i <= TEAM_COLOR_END; i++) {
-            if(i % 2 == 0) {
+		for (int i = TEAM_COLOR_START; i <= TEAM_COLOR_END; i++) {
+			if(i % 2 == 0) {
 				strip.SetPixelColor(i, teamColor);
 			} else {
-				strip.SetPixelColor(i, WHITE);
+				strip.SetPixelColor(i, COLOR_WHITE);
 			}
         }
         strip.Show();
@@ -268,13 +249,13 @@ private:
 		int healthLEDs = HEALTH_END - HEALTH_START + 1;
 		int ledsToTurnOn =  healthLEDs * health / totalHealth;
 		int ledsToTurnOff = healthLEDs - ledsToTurnOn;
-		 for (int i = HEALTH_END; i >= HEALTH_START; i--) {
-            if (i > HEALTH_END - ledsToTurnOff) {
-                strip.SetPixelColor(i, WHITE);
-            } else {
-				strip.SetPixelColor(i, GREEN_LOW);
-            }
-        }
+		for (int i = HEALTH_END; i >= HEALTH_START; i--) {
+			if (i > HEALTH_END - ledsToTurnOff) {
+				strip.SetPixelColor(i, COLOR_WHITE);
+			} else {
+				strip.SetPixelColor(i, COLOR_GREEN_LOW);
+			}
+		}
 		strip.Show();
 	}
 
@@ -282,12 +263,12 @@ private:
 	void fire() {
 		for (int j = 0; j < 1; j++) {
 			for (int i = FIRE_START; i <= FIRE_END; i++) {
-				strip.SetPixelColor(i, YELLOW); 
+				strip.SetPixelColor(i, COLOR_YELLOW); 
 			}
 			strip.Show();
 			vTaskDelay(100);
 			for (int i = FIRE_START; i <= FIRE_END; i++) {
-				strip.SetPixelColor(i, WHITE); // Off
+				strip.SetPixelColor(i, COLOR_WHITE); // Off
 			}
 			strip.Show();
 		   vTaskDelay(100);
@@ -302,9 +283,9 @@ private:
 		int ledsToTurnOff = ammoLEDs - ledsToTurnOn;
 		for (int i = AMMUNITION_START; i <= AMMUNITION_END; i++) {
 			if (i < AMMUNITION_START + ledsToTurnOff) {
-				strip.SetPixelColor(i, WHITE);
+				strip.SetPixelColor(i, COLOR_WHITE);
 			} else {
-				strip.SetPixelColor(i, BLUE_LOW); // Blue for ammunition
+				strip.SetPixelColor(i, COLOR_BLUE_LOW); // Blue for ammunition
 			}
 		}
 		strip.Show();
@@ -337,15 +318,15 @@ private:
 
 	void blinkRed() {
 		for (int i = TEAM_COLOR_START; i <= AMMUNITION_END; i++) {
-                strip.SetPixelColor(i, RED); // Red
-            }
-            strip.Show();
-            vTaskDelay(100);
-            for (int i = TEAM_COLOR_START; i <= AMMUNITION_END; i++) {
-                strip.SetPixelColor(i, WHITE); // Off
-            }
-            strip.Show();
-            vTaskDelay(100);
+				strip.SetPixelColor(i, COLOR_RED); // Red
+			}
+			strip.Show();
+			vTaskDelay(100);
+			for (int i = TEAM_COLOR_START; i <= AMMUNITION_END; i++) {
+				strip.SetPixelColor(i, COLOR_WHITE); // Off
+			}
+			strip.Show();
+			vTaskDelay(100);
 	}
 
 
@@ -355,7 +336,7 @@ public:
         : strip(strip), health(10), ammunition(100) {
 			totalHealth = health;
 			totalAmunication = ammunition;
-			teamColor = ORANGE;
+			teamColor = COLOR_ORANGE;
 		}
 
 	void triggerRefreshAllColors() {
@@ -568,6 +549,10 @@ uint8_t joystickMode = 1;
 unsigned long lastJoystickModeToggleMillis = 0;
 const unsigned long JOYSTICK_MODE_DEBOUNCE_MS = 500;
 
+// Debounce for in-game prefs reset (L2+R2)
+unsigned long lastPrefsResetMillis = 0;
+const unsigned long PREFS_RESET_DEBOUNCE_MS = 2000;
+
 unsigned long lastTimeStamp = 0;
 void notify()
 {
@@ -627,13 +612,37 @@ void notify()
 					}
 
 					if(PS4.Square()) {
-						lights.triggerSetTeamColor(PINK);
+						currentPrefs = prefsWithTeamColor(currentPrefs, COLOR_PINK);
+						lights.triggerSetTeamColor(currentPrefs.color);
 					} else if(PS4.Cross()) {
-						lights.triggerSetTeamColor(BLUE);
+						currentPrefs = prefsWithTeamColor(currentPrefs, COLOR_BLUE);
+						lights.triggerSetTeamColor(currentPrefs.color);
 					} else if (PS4.Circle()){
-						lights.triggerSetTeamColor(ORANGE);
+						currentPrefs = prefsWithTeamColor(currentPrefs, COLOR_ORANGE);
+						lights.triggerSetTeamColor(currentPrefs.color);
 					} else if (PS4.Triangle()) {
-						lights.triggerSetTeamColor(GREEN);
+						currentPrefs = prefsWithTeamColor(currentPrefs, COLOR_GREEN);
+						lights.triggerSetTeamColor(currentPrefs.color);
+					} else if (PS4.L2() && PS4.R2()) {
+						// Reset all user preferences when L2 and R2 are pressed together, with debounce
+						unsigned long now = millis();
+						if (now - lastPrefsResetMillis > PREFS_RESET_DEBOUNCE_MS) {
+							Serial.println("Resetting user preferences (L2+R2)");
+							prefsClearAll();
+							currentPrefs = prefsLoad();
+							// Re-apply any restored prefs to runtime state
+							if (currentPrefs.hasColor) {
+								lights.triggerSetTeamColor(currentPrefs.color);
+							}
+							if (currentPrefs.hasDirection) {
+								direction = currentPrefs.direction;
+							}
+							if (currentPrefs.hasJoystickMode) {
+								joystickMode = currentPrefs.joystickMode;
+							}
+							lights.triggerRefreshAllColors();
+							lastPrefsResetMillis = now;
+						}
 					} else if(PS4.Up()) {
 						unsigned long now = millis();
 						if (now - lastDirectionToggleMillis > DIRECTION_DEBOUNCE_MS) {

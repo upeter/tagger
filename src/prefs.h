@@ -29,3 +29,4 @@ Prefs prefsLoad();
 Prefs prefsWithTeamColor(const Prefs &base, const RgbColor &color);
 Prefs prefsWithDirection(const Prefs &base, int direction);
 Prefs prefsWithJoystickMode(const Prefs &base, uint8_t joystickMode);
+void prefsClearAll();
