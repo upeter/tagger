@@ -316,8 +316,13 @@ private:
 		updateHealth(1);
 		if(isGameOver()) {	
 		 	gameOver();
+		} else {
+			invulnerabile();
 		}
+		
+    }
 
+	void invulnerabile() {
 		// after hit: show carousel while tank is invulnerable
 		unsigned long start = millis();
 		while (!canBeHit() && (millis() - start) < INVULNERABILITY_DURATION_MS) {
@@ -325,8 +330,7 @@ private:
 			vTaskDelay(100 / portTICK_PERIOD_MS);
 		}
 		triggerRefreshAllColors();
-		
-    }
+	}
 
 	void gameOver() {
 		while(true) {
