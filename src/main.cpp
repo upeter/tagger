@@ -309,13 +309,10 @@ private:
 	}
 
 	void renderHit() {
-		static bool on = false;
-		on = !on;
 		for (int i = TEAM_COLOR_START; i <= AMMUNITION_END; i++) {
-			strip.SetPixelColor(i, on ? COLOR_RED : COLOR_WHITE);
+			strip.SetPixelColor(i, hitBlinkOn ? COLOR_RED : COLOR_WHITE);
 		}
 	}
-
 
 
 public:
@@ -368,58 +365,84 @@ public:
 	}
 
 	void updateFrame() {
-		unsigned long now = millis();
+    unsigned long now = millis();
 
-		// Track previous state so we know if anything changed this tick
-		bool prevHitBlinkActive = hitBlinkActive;
-		bool prevInvulnActive   = invulnActive;
-		bool prevFireActive     = fireActive;
-		bool prevHitBlinkOn     = hitBlinkOn;
+    // Track previous state so we know if anything changed this tick
+    bool prevHitBlinkActive = hitBlinkActive;
+    bool prevInvulnActive   = invulnActive;
+    bool prevFireActive     = fireActive;
+    bool prevHitBlinkOn     = hitBlinkOn;
 
-		// Advance hit blink state
-		if (hitBlinkActive && now >= hitBlinkNextToggleMillis) {
-			hitBlinkOn = !hitBlinkOn;
-			hitBlinkNextToggleMillis = now + HIT_BLINK_INTERVAL_MS;
-			hitBlinkRemainingToggles--;
-			if (hitBlinkRemainingToggles <= 0) {
-				hitBlinkActive = false;
-				hitBlinkOn = false;
-			}
-		}
+    if (isGameOver()) {
+        // Game over: infinite hit blink with proper interval
+        if (!hitBlinkActive) {
+            // Ensure we enter blink mode when game over first happens
+            hitBlinkActive = true;
+            hitBlinkOn = true;
+            hitBlinkNextToggleMillis = now + HIT_BLINK_INTERVAL_MS;
+        }
 
-		// End of invulnerability window
-		if (invulnActive && now >= invulnEndMillis) {
-			invulnActive = false;
-		}
+        if (now >= hitBlinkNextToggleMillis) {
+            hitBlinkOn = !hitBlinkOn;
+            hitBlinkNextToggleMillis = now + HIT_BLINK_INTERVAL_MS;
+        }
 
-		// End of fire window
-		if (fireActive && now >= fireEndMillis) {
-			fireActive = false;
-		}
+        // Only thing that matters for rendering in game over is hitBlinkOn
+        if (prevHitBlinkOn != hitBlinkOn) {
+            needsRender = true;
+        }
 
-		// Hit blink animation changes: render
-		if (prevHitBlinkActive != hitBlinkActive || prevHitBlinkOn != hitBlinkOn) {
-			needsRender = true;
-		}
+        return; // Nothing else (invuln/fire) is relevant in game over
+    } else {
+        // Normal play: finite hit blink, invulnerability and fire windows
 
-		// Invulnerability started or ended: render once
-		if (prevInvulnActive != invulnActive) {
-			needsRender = true;
-		}
+        if (hitBlinkActive && now >= hitBlinkNextToggleMillis) {
+            hitBlinkOn = !hitBlinkOn;
+            hitBlinkNextToggleMillis = now + HIT_BLINK_INTERVAL_MS;
 
-		// Fire started or ended: render once
-		if (prevFireActive != fireActive) {
-			needsRender = true;
-		}
+            hitBlinkRemainingToggles--;
+            if (hitBlinkRemainingToggles <= 0) {
+                hitBlinkActive = false;
+                hitBlinkOn = false;
+            }
+        }
 
-		// While invulnerable and NOT in hit blink, drive the invulnerability animation
-		if (!hitBlinkActive && invulnActive) {
-			if (now - lastInvulnAnimMillis >= INVULN_FRAME_INTERVAL_MS) {
-				lastInvulnAnimMillis = now;
-				needsRender = true;
-			}
-		}
-	}
+        // End of invulnerability window
+        if (invulnActive && now >= invulnEndMillis) {
+            invulnActive = false;
+        }
+
+        // End of fire window
+        if (fireActive && now >= fireEndMillis) {
+            fireActive = false;
+        }
+
+        // While invulnerable and NOT in hit blink, drive the invulnerability animation
+        if (!hitBlinkActive && invulnActive) {
+            if (now - lastInvulnAnimMillis >= INVULN_FRAME_INTERVAL_MS) {
+                lastInvulnAnimMillis = now;
+                needsRender = true;
+            }
+        }
+
+        // Hit blink animation changes: render
+        if (prevHitBlinkActive != hitBlinkActive || prevHitBlinkOn != hitBlinkOn) {
+            needsRender = true;
+        }
+
+        // Invulnerability started or ended: render once
+        if (prevInvulnActive != invulnActive) {
+            needsRender = true;
+        }
+
+        // Fire started or ended: render once
+        if (prevFireActive != fireActive) {
+            needsRender = true;
+        }
+
+        return;
+    }
+}
 
 	void renderFrame() {
 		if (!needsRender) {
@@ -428,7 +451,6 @@ public:
 		if (isGameOver()) {
 			renderHit();
 			strip.Show();
-			needsRender = false;
 			return;
 		}
 		// Hit blink phase overrides everything else
