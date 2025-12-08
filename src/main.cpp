@@ -227,6 +227,13 @@ private:
 	int hitBlinkRemainingToggles = 0;
 	bool hitBlinkOn = false;
 
+	// Invulnerability animation timing (so we only animate during invuln window)
+	unsigned long lastInvulnAnimMillis = 0;
+	static const unsigned long INVULN_FRAME_INTERVAL_MS = 100;
+
+	// When false, LED strip is left as-is and not updated
+	volatile bool needsRender = false;
+
 	void refreshAllColors() {
 		setTeamColorBase();
 		updateHealth(0);
@@ -321,6 +328,7 @@ public:
 
 	void setTeamColor(RgbColor color) {
 		teamColor = color;
+		needsRender = true;
 	}
 
 	void onHit() {
@@ -335,12 +343,15 @@ public:
 		// Start invulnerability window; will be visible after hit blink ends
 		invulnActive = true;
 		invulnEndMillis = lastHitMillis + INVULNERABILITY_DURATION_MS;
+		lastInvulnAnimMillis = lastHitMillis;
+		needsRender = true;
 	}
 
 	void onFire() {
 		fireActive = true;
 		fireEndMillis = millis() + FIRE_DURATION_MS;
 		updateAmmunition(1);
+		needsRender = true;
 	}
 
 	boolean canBeHit() {
@@ -358,6 +369,13 @@ public:
 
 	void updateFrame() {
 		unsigned long now = millis();
+
+		// Track previous state so we know if anything changed this tick
+		bool prevHitBlinkActive = hitBlinkActive;
+		bool prevInvulnActive   = invulnActive;
+		bool prevFireActive     = fireActive;
+		bool prevHitBlinkOn     = hitBlinkOn;
+
 		// Advance hit blink state
 		if (hitBlinkActive && now >= hitBlinkNextToggleMillis) {
 			hitBlinkOn = !hitBlinkOn;
@@ -369,18 +387,48 @@ public:
 			}
 		}
 
+		// End of invulnerability window
 		if (invulnActive && now >= invulnEndMillis) {
 			invulnActive = false;
 		}
+
+		// End of fire window
 		if (fireActive && now >= fireEndMillis) {
 			fireActive = false;
+		}
+
+		// Hit blink animation changes: render
+		if (prevHitBlinkActive != hitBlinkActive || prevHitBlinkOn != hitBlinkOn) {
+			needsRender = true;
+		}
+
+		// Invulnerability started or ended: render once
+		if (prevInvulnActive != invulnActive) {
+			needsRender = true;
+		}
+
+		// Fire started or ended: render once
+		if (prevFireActive != fireActive) {
+			needsRender = true;
+		}
+
+		// While invulnerable and NOT in hit blink, drive the invulnerability animation
+		if (!hitBlinkActive && invulnActive) {
+			if (now - lastInvulnAnimMillis >= INVULN_FRAME_INTERVAL_MS) {
+				lastInvulnAnimMillis = now;
+				needsRender = true;
+			}
 		}
 	}
 
 	void renderFrame() {
+		if (!needsRender) {
+			return;
+		}
 		if (isGameOver()) {
 			renderHit();
 			strip.Show();
+			needsRender = false;
 			return;
 		}
 		// Hit blink phase overrides everything else
@@ -398,6 +446,7 @@ public:
 			}
 		}
 		strip.Show();
+		needsRender = false;
 	}
 };
 
@@ -968,9 +1017,11 @@ void handleFire(void *parameter){
 
 
 void handleLED(void *parameter){
-	const TickType_t frameDelay = pdMS_TO_TICKS(100); // 
+	const TickType_t frameDelay = pdMS_TO_TICKS(20); // Small tick just to advance time-based animations
 	while (1) {
+		// Advance internal animation state
 		lights.updateFrame();
+		// Only renders when an animation or state change requested it
 		lights.renderFrame();
 		vTaskDelay(frameDelay);
 	}
