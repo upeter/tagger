@@ -653,15 +653,18 @@ void notify()
 					// Joystick mapping depending on mode
 					if (joystickMode == 2) {
 						// Two-stick: right Y for forward/back, left X for turning
-						// Use left Y for in-place spins when no forward/back input
+						// Use left X for in-place spins when no forward/back input
 						int rawY = PS4.RStickY() * direction;
 						int rawTurn = PS4.LStickX();
 						int rawSpin = PS4.LStickY();
-						if (abs(rawY) < 10 && abs(rawTurn) < 10) {
-							// If user only uses left Y, treat it as in-place rotation
+						// deadzone for deciding "standing still"
+						const int deadzone = 10;
+						if (abs(rawY) < deadzone && abs(rawSpin) < deadzone) {
+							// Standing still: left/right should rotate in place
 							stickY = 0;
-							stickX = rawSpin;
+							stickX = rawTurn;
 						} else {
+							// Moving: right Y + left X mixed driving
 							stickY = rawY;
 							stickX = rawTurn;
 						}
@@ -680,9 +683,25 @@ void notify()
 						maxX
 					);
 
-					rightMotorSpeedRaw = constrain(stickY - stickXWithExpo, -127, 127);
-					leftMotorSpeedRaw = constrain(stickY + stickXWithExpo, -127, 127);
+					// If we are effectively standing still, boost pivot authority
+					const int standstillThreshold = 10; // same units as stickY
+					if (joystickMode == 2 && abs(stickY) < standstillThreshold) {
+						// Use raw left stick X directly for pivot
+						int rawTurn = PS4.LStickX();          // -127..127
+						const int pivotScale = 1.5;             // increase if still too weak
+						int pivot = constrain(rawTurn * pivotScale, -127, 127);
 
+						rightMotorSpeedRaw =  pivot;
+						leftMotorSpeedRaw  =  -pivot;
+					} else if (joystickMode == 2 && abs(stickY) > 80) {
+						// At high throttle in 2-stick mode, boost turning for tighter curves
+						int boostedTurn = constrain(stickXWithExpo * 2.5, maxX * -1, maxX);
+						rightMotorSpeedRaw = constrain(stickY - boostedTurn, -127, 127);
+						leftMotorSpeedRaw  = constrain(stickY + boostedTurn, -127, 127);
+					} else {
+						rightMotorSpeedRaw = constrain(stickY - stickXWithExpo, -127, 127);
+						leftMotorSpeedRaw  = constrain(stickY + stickXWithExpo, -127, 127);
+					}
 					rightMotorSpeed = map(rightMotorSpeedRaw , -127, 127, minSpeed, maxSpeed); // Left stick  - y axis - forward/backward left motor movement
 					leftMotorSpeed = map(leftMotorSpeedRaw, -127, 127, minSpeed, maxSpeed);   // Right stick - y axis - forward/backward right motor movement
 
