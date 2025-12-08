@@ -387,9 +387,7 @@ public:
 	}
 
 	boolean canFire() {
-		//return lastHitMillis + 600 < millis();
-		// allow firing even during invulnerability period
-		return true;
+		return lastHitMillis + 600 < millis();
 	}
 
 
