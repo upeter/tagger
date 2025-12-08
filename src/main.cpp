@@ -202,6 +202,9 @@ private:
     static const int FIRE_END = AMMUNITION_END;
 	static const int SHOTS_PER_LED = 5;
 	static const unsigned long INVULNERABILITY_DURATION_MS = 3000;
+	static const unsigned long FIRE_DURATION_MS = 200;
+	static const int HIT_BLINK_COUNT = 5;
+	static const unsigned long HIT_BLINK_INTERVAL_MS = 100;
 
     NeoPixelBus<NeoGrbFeature, NeoEsp32RmtMethodBase<NeoEsp32RmtSpeed800Kbps, NeoEsp32RmtChannel3>>& strip;
     int health;
@@ -212,46 +215,25 @@ private:
 	
 	
 	volatile long lastHitMillis = millis();
-	enum LedCommand {
-		NONE,
-		ALL,
-		SET_TEAM_COLOR_COLOR,
-		FIRE,
-		HIT
-	};
-	LedCommand ledCommand = NONE;
+	
+	bool invulnActive = false;
+	unsigned long invulnEndMillis = 0;
+	
+	bool fireActive = false;
+	unsigned long fireEndMillis = 0;
+
+	bool hitBlinkActive = false;
+	unsigned long hitBlinkNextToggleMillis = 0;
+	int hitBlinkRemainingToggles = 0;
+	bool hitBlinkOn = false;
 
 	void refreshAllColors() {
-			setTeamColor();
-			updateHealth(0);
-			updateAmmunition(0);
+		setTeamColorBase();
+		updateHealth(0);
+		updateAmmunition(0);
 	}
 
-	void showTeamColorCarousel() {
-		// if invulnerability is over, just show normal colors
-		if (canBeHit()) {
-			refreshAllColors();
-			return;
-		}
-
-		static uint8_t offset = 0;
-		int length = TEAM_COLOR_END - TEAM_COLOR_START + 1;
-
-		for (int i = TEAM_COLOR_START; i <= TEAM_COLOR_END; i++) {
-			// Create a moving even/odd pattern across the whole team strip
-			// Example: step 0 -> even=teamColor, odd=black; step 1 -> odd=teamColor, even=black; etc.
-			int logicalIndex = (i - TEAM_COLOR_START + offset) % length;
-			if (logicalIndex % 2 == 0) {
-				strip.SetPixelColor(i, teamColor);
-			} else {
-				strip.SetPixelColor(i, COLOR_WHITE);
-			}
-		}
-		strip.Show();
-		offset = (offset + 1) % length;
-	}
-
-	void setTeamColor() {
+	void setTeamColorBase() {
 		for (int i = TEAM_COLOR_START; i <= TEAM_COLOR_END; i++) {
 			if(i % 2 == 0) {
 				strip.SetPixelColor(i, teamColor);
@@ -259,11 +241,10 @@ private:
 				strip.SetPixelColor(i, COLOR_WHITE);
 			}
         }
-        strip.Show();
     }
 
-    void updateHealth(int damage) {
-        health -= damage;
+	void updateHealth(int damage) {
+		health -= damage;
 		int healthLEDs = HEALTH_END - HEALTH_START + 1;
 		int ledsToTurnOn =  healthLEDs * health / totalHealth;
 		int ledsToTurnOff = healthLEDs - ledsToTurnOn;
@@ -274,24 +255,9 @@ private:
 				strip.SetPixelColor(i, COLOR_GREEN_LOW);
 			}
 		}
-		strip.Show();
-	}
-
-
-	void fire() {
-		for (int j = 0; j < 1; j++) {
-			for (int i = FIRE_START; i <= FIRE_END; i++) {
-				strip.SetPixelColor(i, COLOR_YELLOW); 
-			}
-			strip.Show();
-			vTaskDelay(100);
-			for (int i = FIRE_START; i <= FIRE_END; i++) {
-				strip.SetPixelColor(i, COLOR_WHITE); // Off
-			}
-			strip.Show();
-		   vTaskDelay(100);
+		for (int i = HEALTH_END; i <= AMMUNITION_START; i++) {
+			strip.SetPixelColor(i, COLOR_WHITE); //clear pixels between health and ammo
 		}
-		updateAmmunition(1);
 	}
 
 	void updateAmmunition(int shotsFired) {
@@ -306,49 +272,41 @@ private:
 				strip.SetPixelColor(i, COLOR_BLUE_LOW); // Blue for ammunition
 			}
 		}
-		strip.Show();
 	}
 
-    void hit() {
-        for (int j = 0; j < 5; j++) {
-            blinkRed();
-        }
-		updateHealth(1);
-		if(isGameOver()) {	
-		 	gameOver();
-		} else {
-			invulnerabile();
-		}
-		
-    }
-
-	void invulnerabile() {
-		// after hit: show carousel while tank is invulnerable
-		unsigned long start = millis();
-		while (!canBeHit() && (millis() - start) < INVULNERABILITY_DURATION_MS) {
-			showTeamColorCarousel();
-			vTaskDelay(100 / portTICK_PERIOD_MS);
-		}
-		triggerRefreshAllColors();
+	void renderBase() {
+		setTeamColorBase();
+		updateHealth(0);
+		updateAmmunition(0);
 	}
 
-	void gameOver() {
-		while(true) {
-			blinkRed();
+	void renderInvulnerabilityOverlay() {
+		static uint8_t offset = 0;
+		int length = TEAM_COLOR_END - TEAM_COLOR_START + 1;
+
+		for (int i = TEAM_COLOR_START; i <= TEAM_COLOR_END; i++) {
+			int logicalIndex = (i - TEAM_COLOR_START + offset) % length;
+			if (logicalIndex % 2 == 0) {
+				strip.SetPixelColor(i, teamColor);
+			} else {
+				strip.SetPixelColor(i, COLOR_WHITE);
+			}
+		}
+		offset = (offset + 1) % length;
+	}
+
+	void renderFireOverlay() {
+		for (int i = FIRE_START; i <= FIRE_END; i++) {
+			strip.SetPixelColor(i, COLOR_YELLOW);
 		}
 	}
 
-	void blinkRed() {
+	void renderHit() {
+		static bool on = false;
+		on = !on;
 		for (int i = TEAM_COLOR_START; i <= AMMUNITION_END; i++) {
-				strip.SetPixelColor(i, COLOR_RED); // Red
-			}
-			strip.Show();
-			vTaskDelay(100);
-			for (int i = TEAM_COLOR_START; i <= AMMUNITION_END; i++) {
-				strip.SetPixelColor(i, COLOR_WHITE); // Off
-			}
-			strip.Show();
-			vTaskDelay(100);
+			strip.SetPixelColor(i, on ? COLOR_RED : COLOR_WHITE);
+		}
 	}
 
 
@@ -361,29 +319,28 @@ public:
 			teamColor = COLOR_ORANGE;
 		}
 
-	void triggerRefreshAllColors() {
-			ledCommand = ALL;
-			vTaskResume(xHandle_handleLED);
-	}
-
-	void triggerSetTeamColor(RgbColor color) {
+	void setTeamColor(RgbColor color) {
 		teamColor = color;
-		ledCommand = SET_TEAM_COLOR_COLOR;
-		vTaskResume(xHandle_handleLED);
 	}
 
-	void triggerFire() {
-		 if (ledCommand == HIT) {
-            return; // drop fire; hit has priority
-        }
-		ledCommand = FIRE;
-		vTaskResume(xHandle_handleLED);
-	}
-
-	void triggerHit() {
+	void onHit() {
 		lastHitMillis = millis();
-		ledCommand = HIT;
-		vTaskResume(xHandle_handleLED);
+		// Start hit blink phase (overrides other effects in renderFrame)
+		hitBlinkActive = true;
+		hitBlinkOn = true;
+		hitBlinkRemainingToggles = HIT_BLINK_COUNT * 2; // on+off per blink
+		hitBlinkNextToggleMillis = lastHitMillis + HIT_BLINK_INTERVAL_MS;
+		// Apply damage
+		updateHealth(1);
+		// Start invulnerability window; will be visible after hit blink ends
+		invulnActive = true;
+		invulnEndMillis = lastHitMillis + INVULNERABILITY_DURATION_MS;
+	}
+
+	void onFire() {
+		fireActive = true;
+		fireEndMillis = millis() + FIRE_DURATION_MS;
+		updateAmmunition(1);
 	}
 
 	boolean canBeHit() {
@@ -399,30 +356,49 @@ public:
 		return health <= 0;
 	}
 
-  
+	void updateFrame() {
+		unsigned long now = millis();
+		// Advance hit blink state
+		if (hitBlinkActive && now >= hitBlinkNextToggleMillis) {
+			hitBlinkOn = !hitBlinkOn;
+			hitBlinkNextToggleMillis = now + HIT_BLINK_INTERVAL_MS;
+			hitBlinkRemainingToggles--;
+			if (hitBlinkRemainingToggles <= 0) {
+				hitBlinkActive = false;
+				hitBlinkOn = false;
+			}
+		}
 
-	void exectuteCommand() {
-		switch (ledCommand)
-		{
-		case SET_TEAM_COLOR_COLOR:
-			refreshAllColors();
-			break;
-		case FIRE:
-			fire();
-			refreshAllColors();
-			break;
-		case HIT:
-			hit();
-			refreshAllColors();
-			break;
-		case ALL:
-			refreshAllColors();
-			break;
+		if (invulnActive && now >= invulnEndMillis) {
+			invulnActive = false;
+		}
+		if (fireActive && now >= fireEndMillis) {
+			fireActive = false;
 		}
 	}
 
-
-
+	void renderFrame() {
+		if (isGameOver()) {
+			renderHit();
+			strip.Show();
+			return;
+		}
+		// Hit blink phase overrides everything else
+		if (hitBlinkActive) {
+			renderHit();
+		} else {
+			// base state
+			renderBase();
+			// overlays (can combine)
+			if (invulnActive) {
+				renderInvulnerabilityOverlay();
+			}
+			if (fireActive) {
+				renderFireOverlay();
+			}
+		}
+		strip.Show();
+	}
 };
 
 class Motors
@@ -617,16 +593,16 @@ void notify()
 
 					if(PS4.Square()) {
 						currentPrefs = prefsWithTeamColor(currentPrefs, COLOR_PINK);
-						lights.triggerSetTeamColor(currentPrefs.color);
+						lights.setTeamColor(currentPrefs.color);
 					} else if(PS4.Cross()) {
 						currentPrefs = prefsWithTeamColor(currentPrefs, COLOR_BLUE);
-						lights.triggerSetTeamColor(currentPrefs.color);
+						lights.setTeamColor(currentPrefs.color);
 					} else if (PS4.Circle()){
 						currentPrefs = prefsWithTeamColor(currentPrefs, COLOR_ORANGE);
-						lights.triggerSetTeamColor(currentPrefs.color);
+						lights.setTeamColor(currentPrefs.color);
 					} else if (PS4.Triangle()) {
 						currentPrefs = prefsWithTeamColor(currentPrefs, COLOR_GREEN);
-						lights.triggerSetTeamColor(currentPrefs.color);
+						lights.setTeamColor(currentPrefs.color);
 					} else if (PS4.L2() && PS4.R2()) {
 						// Reset all user preferences when L2 and R2 are pressed together, with debounce
 						unsigned long now = millis();
@@ -636,7 +612,7 @@ void notify()
 							currentPrefs = prefsLoad();
 							// Re-apply any restored prefs to runtime state
 							if (currentPrefs.hasColor) {
-								lights.triggerSetTeamColor(currentPrefs.color);
+								lights.setTeamColor(currentPrefs.color);
 							}
 							if (currentPrefs.hasDirection) {
 								direction = currentPrefs.direction;
@@ -644,7 +620,9 @@ void notify()
 							if (currentPrefs.hasJoystickMode) {
 								joystickMode = currentPrefs.joystickMode;
 							}
-							lights.triggerRefreshAllColors();
+							// force immediate visual refresh after prefs reset
+							lights.updateFrame();
+							lights.renderFrame();
 							lastPrefsResetMillis = now;
 						}
 					} else if(PS4.Up()) {
@@ -822,7 +800,7 @@ void processIRQueue(void *parameter)
                     
                     if (lights.canBeHit()) {
                         vTaskResume(xHandle_toggleOnboardLED);
-                        lights.triggerHit();
+						lights.onHit();
                         chaosMonkey->Start();
                         lastIRProcessTime = currentTime;
                     } else {
@@ -955,7 +933,7 @@ void handleFire(void *parameter){
 				if(lights.canFire()) {
 					Serial.println(">>> Shot!");
 					ir_send.send(ir_messages[0]);
-					lights.triggerFire();
+					lights.onFire();
 					vTaskDelay(500);
 				} else {
 					Serial.println(">>> Shot cooldown");
@@ -969,31 +947,13 @@ void handleFire(void *parameter){
 	}
 }
 
-			
-
 
 void handleLED(void *parameter){
-
-	while(true) {
-		// Suspend the task
-		vTaskSuspend(NULL);
-		Serial.println(">>> ws2812fxTask!");
-		lights.exectuteCommand();
-        // Loop to run the LED blinking code 5 times
-        // for (int j = 0; j < 5; j++) {
-		// 	// Example: Blink LEDs
-		// 	for (int i = 0; i < NUM_LEDS; i++) {
-		// 		 strip.SetPixelColor(i, RED); // Red color
-		// 	}
-		// 	strip.Show();
-		// 	vTaskDelay(100);
-		// 	for (int i = 0; i < NUM_LEDS; i++) {
-		// 		 strip.SetPixelColor(i, WHITE); // Turn off
-		// 	}
-		// 	strip.Show();
-		// 	vTaskDelay(100);
-		// }
-		Serial.println(">>> ws2812fxTask! DONE");
+	const TickType_t frameDelay = pdMS_TO_TICKS(100); // 
+	while (1) {
+		lights.updateFrame();
+		lights.renderFrame();
+		vTaskDelay(frameDelay);
 	}
 }
 
@@ -1110,16 +1070,6 @@ void setup() {
 	// 	&xHandle_readSerialInput,
 	// 	1); // Task handle
 
-// Start serial read task
-	xTaskCreatePinnedToCore(				   // Use xTaskCreate() in vanilla FreeRTOS
-		handleLED,		   // Function to be called
-		"handle LED",			   // Name of task
-		2048,					   // Stack size (bytes in ESP32, words in FreeRTOS)
-		NULL,					   // Parameter to pass
-		2,						   // Task priority (must be same to prevent lockup)
-		&xHandle_handleLED,
-		1); // Task handle
-
 
 
 	vTaskDelay(1000);
@@ -1129,7 +1079,7 @@ void setup() {
 	// Load user preferences (team color + direction)
 	currentPrefs = prefsLoad();
 	if (currentPrefs.hasColor) {
-		lights.triggerSetTeamColor(currentPrefs.color);
+		lights.setTeamColor(currentPrefs.color);
 	}
 	if (currentPrefs.hasDirection) {
 		direction = currentPrefs.direction;
@@ -1137,7 +1087,20 @@ void setup() {
 	if (currentPrefs.hasJoystickMode) {
 		joystickMode = currentPrefs.joystickMode;
 	}
-	lights.triggerRefreshAllColors();
+	// Ensure LEDs reflect initial state
+	lights.updateFrame();
+	lights.renderFrame();
+
+	// Start serial read task
+	xTaskCreatePinnedToCore(				   // Use xTaskCreate() in vanilla FreeRTOS
+		handleLED,		   // Function to be called
+		"handle LED",			   // Name of task
+		4096,					   // Stack size (bytes in ESP32, words in FreeRTOS)
+		NULL,					   // Parameter to pass
+		2,						   // Task priority (must be same to prevent lockup)
+		&xHandle_handleLED,
+		1); // Task handle
+
 
     Serial.println("Initialize motors...");
 
