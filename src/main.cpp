@@ -20,12 +20,11 @@
 #include "IR32/src/IRSend.h"
 #include "IR32/src/IRRecv.h"
 #include "soc/rtc_wdt.h" 
-#include <ESP32Servo.h>
-// #include <tagger.h>
 #include <NeoPixelBus.h>
 #include <PS4Controller.h>
 #include "prefs.h"
 #include "colors.h"
+#include "motors.h"
 
 
 #define LED_BUILTIN 2
@@ -60,23 +59,9 @@ static const int trigger_pin = 25;
 static const int trigger_servo_pin = 18;
 static const int laser_pin = 15;
 
-//Motor
-int maxSpeed = 255;
-int minSpeed = maxSpeed * -1;
-
-// Right motor
-int enableRightMotor = 22;
-int rightMotorPin1 = 16;
-int rightMotorPin2 = 17;
-// Left motor
-int enableLeftMotor = 23;
-int leftMotorPin1 = 18;
-int leftMotorPin2 = 19;
-//PWM
-const int PWMFreq = 1000; /* 1 KHz */
-const int PWMResolution = 8;
-const int rightMotorPWMSpeedChannel = 4;
-const int leftMotorPWMSpeedChannel = 5;
+// Motor
+int maxSpeed = MOTOR_MAX_SPEED;
+int minSpeed = MOTOR_MIN_SPEED;
 //expo
 const float expo = 0.5;
 const float nullFactor = 157.0;
@@ -472,113 +457,7 @@ public:
 	}
 };
 
-class Motors
-{
-
-  void setMotorDirections(int motorPin1, int motorPin2, int speed)
-  {
-    int pin1State = (speed > 0) ? HIGH : LOW;
-    int pin2State = (speed < 0) ? HIGH : LOW;
-
-    digitalWrite(motorPin1, pin1State);
-    digitalWrite(motorPin2, pin2State);
-  }
-
-public:
-  void rotateMotor(int rightMotorSpeed, int leftMotorSpeed)
-  {
-    setMotorDirections(rightMotorPin1, rightMotorPin2, rightMotorSpeed);
-    setMotorDirections(leftMotorPin1, leftMotorPin2, leftMotorSpeed);
-    ledcWrite(rightMotorPWMSpeedChannel, abs(rightMotorSpeed));
-    ledcWrite(leftMotorPWMSpeedChannel, abs(leftMotorSpeed));
-  }
-
-  void setUpPinModes()
-  {
-    pinMode(enableRightMotor, OUTPUT);
-    pinMode(rightMotorPin1, OUTPUT);
-    pinMode(rightMotorPin2, OUTPUT);
-
-    pinMode(enableLeftMotor, OUTPUT);
-    pinMode(leftMotorPin1, OUTPUT);
-    pinMode(leftMotorPin2, OUTPUT);
-
-    // Set up PWM for motor speed
-    ledcSetup(rightMotorPWMSpeedChannel, PWMFreq, PWMResolution);
-    ledcSetup(leftMotorPWMSpeedChannel, PWMFreq, PWMResolution);
-    ledcAttachPin(enableRightMotor, rightMotorPWMSpeedChannel);
-    ledcAttachPin(enableLeftMotor, leftMotorPWMSpeedChannel);
-
-    rotateMotor(0, 0);
-  }
-};
-
-class MotorChaosMonkey
-{
-
-  unsigned long startMillis; // will store last time LED was updated
-  volatile boolean active = false;
-  boolean phaseOneExecuted;
-  boolean phaseTwoExecuted;
-  unsigned long chaosDurationMillis = 800;
-  unsigned long coolDownMillis = 3000;
-  Motors *motors;
-
-public:
-  MotorChaosMonkey(Motors *motors_)
-  {
-    motors = motors_;
-  }
-
-  void Start()
-  {
-     unsigned long currentMillis = millis();
-if (!active && (currentMillis - startMillis) >= coolDownMillis)
-    {
-      active = true;
-      startMillis = millis();
-      Serial.println((String) "chaos started");
-    }
-    else
-    {
-      Serial.println((String) "chaos won't start because it is already active");
-    }
-  }
-
-  boolean isActive()
-  {
-    return active;
-  }
-
-void Update()
-  {
-    unsigned long currentMillis = millis();
-    if (active)
-    {
-      if ((currentMillis - startMillis) >= chaosDurationMillis)
-      {
-        active = false;
-        startMillis = 0;
-        phaseOneExecuted = false;
-        phaseTwoExecuted = false;
-        Serial.println((String) "chaos terminated after: " + chaosDurationMillis);
-      }
-      else
-      {
-        if (!phaseOneExecuted)
-        {
-          motors->rotateMotor(maxSpeed, -maxSpeed);
-          phaseOneExecuted = true;
-        }
-        if (phaseOneExecuted && !phaseTwoExecuted && currentMillis - startMillis >= (chaosDurationMillis / 2))
-        {
-          motors->rotateMotor(-maxSpeed, maxSpeed);
-          phaseTwoExecuted = true;
-        }
-      }
-    }
-  }
-};
+// Motors and MotorChaosMonkey are now declared in motors.h / motors.cpp
 
 float withExpo(int x)
 {
