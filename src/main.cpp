@@ -26,6 +26,8 @@
 #include "colors.h"
 #include "motors.h"
 #include "activity_lights.h"
+#include "laser.h"
+#include "flasher.h"
 
 
 #define LED_BUILTIN 2
@@ -70,7 +72,7 @@ const int maxX = 35;
 volatile int trimX = 0;
 
 // Globals
-static int led_delay = 50;   // ms
+int led_delay = 50;   // ms
 static bool flash_led = false;
 const uint32_t ir_messages[] =
 	{
@@ -126,54 +128,6 @@ volatile unsigned long lastIRProcessTime = 0;
 // Color definitions moved to colors.{h,cpp}
 
 //Classes
-class Flasher {
-public:
-  Flasher(int ledPin, long flashDuration) : ledPin(ledPin), flashDuration(flashDuration) {
-    pinMode(ledPin, OUTPUT);
-  }
-
-  void flash() {
-		long startTime = millis();
-		while (millis() - startTime < flashDuration) {
-			digitalWrite(led_pin, HIGH);
-			vTaskDelay(led_delay / portTICK_PERIOD_MS);
-			digitalWrite(led_pin, LOW);
-			vTaskDelay(led_delay / portTICK_PERIOD_MS);
-		}
-  }
-
-
-private:
-  int ledPin;
-  long flashDuration;
-};
-
-class Laser {
-public:
-  Laser(int laserPin) : laserPin(laserPin), active(false) {
-   pinMode(laserPin, OUTPUT);
-  }
-
-  void activate() {
-		if(!active) {
-			active = true;
-			digitalWrite(laserPin, HIGH);
-		}
-  }
-
-  void deactivate() {
-		if(active) {
-			active = false;
-			digitalWrite(laserPin, LOW);
-		}
-  }
-
-
-
-private:
-  int laserPin;
-  boolean active;
-};
 
 // Motors and MotorChaosMonkey are now declared in motors.h / motors.cpp
 
