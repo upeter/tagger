@@ -10,7 +10,6 @@
 #include "ir_fire.h"
 #include "ir_sensors.h"
 #include "laser.h"
-#include "misc.h"
 #include "motor_control.h"
 #include "motors.h"
 #include "prefs.h"
