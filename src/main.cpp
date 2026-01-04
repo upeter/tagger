@@ -302,42 +302,8 @@ void toggleOnboardLED(void *parameter) {
 	vTaskSuspend(NULL);
   	flasher.flash();
   }
-//   while (true) {
-//     digitalWrite(led_pin, HIGH);
-//     vTaskDelay(led_delay / portTICK_PERIOD_MS);
-//     digitalWrite(led_pin, LOW);
-//     vTaskDelay(led_delay / portTICK_PERIOD_MS);
-//   }
 }
 
-// Task: Read from serial terminal
-// Feel free to use Serial.readString() or Serial.parseInt(). I'm going to show
-// it with atoi() in case you're doing this in a non-Arduino environment. You'd
-// also need to replace Serial with your own UART code for non-Arduino.
-void readSerialInput(void *parameters) {
- String inputBuffer = ""; 
- while (true){
-	if (Serial.available() > 0) {
-		char c = Serial.read();
-		if (c == '\n') {
-			int ledDelay = inputBuffer.toInt(); // Convert the input to an integer
-			if (ledDelay != 0) {
-				Serial.print("Updated LED delay to: ");
-				Serial.println(ledDelay);
-				led_delay = ledDelay;
-				inputBuffer = ""; // Clear the buffer
-			} else {
-				 Serial.println("Invalid input. Please provide an integer value.");
-				 inputBuffer = "";
-			}
-		} else {
-			Serial.println("Entered: " + (String)c);
-			inputBuffer += c;
-			Serial.println(" Buffer: " + inputBuffer);
-		}
-  	}
- }
-}
 
 
 void handleLED(void *parameter){
@@ -364,23 +330,9 @@ void setup() {
   // Configure serial and wait a second
   Serial.begin(115200);
   vTaskDelay(1000 / portTICK_PERIOD_MS);
+  	Serial.println("Initializing tank");
+	Serial.println("Initializing onboard LEDs...");
 
- //disable watchdog - seems not to work properly...
- 	//  rtc_wdt_protect_off();    // Turns off the automatic wdt service
-	// rtc_wdt_enable();         // Turn it on manually
-	// rtc_wdt_set_time(RTC_WDT_STAGE0, 20000);  // Define how long you desire to let dog wait.
-
-	//servo init
-	// Allow allocation of all timers
-	// ESP32PWM::allocateTimer(0);
-	// ESP32PWM::allocateTimer(1);
-	// ESP32PWM::allocateTimer(2);
-	// ESP32PWM::allocateTimer(3);
-	
-  
-  Serial.println("Multi-task LED Demo");
-  Serial.println("Enter a number in milliseconds to change the LED delay.");
-	//digitalWrite(trigger_servo_pin, LOW);
 
 	// Start blink task
 	xTaskCreatePinnedToCore(					// Use xTaskCreate() in vanilla FreeRTOS
@@ -391,17 +343,6 @@ void setup() {
 		1,							// Task priority
 		&xHandle_toggleOnboardLED,
 		1); // Task handle
-
-	// Start serial read task
-	// xTaskCreatePinnedToCore(				   // Use xTaskCreate() in vanilla FreeRTOS
-	// 	readSerialInput,		   // Function to be called
-	// 	"Read Serial",			   // Name of task
-	// 	1024,					   // Stack size (bytes in ESP32, words in FreeRTOS)
-	// 	NULL,					   // Parameter to pass
-	// 	0,						   // Task priority (must be same to prevent lockup)
-	// 	&xHandle_readSerialInput,
-	// 	1); // Task handle
-
 
 
 	vTaskDelay(1000);
