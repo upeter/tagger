@@ -16,15 +16,16 @@
 #include "misc.h"
 // #include <FastLED.h>
 #include <EEPROM.h>
-#include <PS4Controller.h>
 #include <NeoPixelBus.h>
-#include <PS4Controller.h>
 #include "prefs.h"
 #include "colors.h"
 #include "motors.h"
 #include "activity_lights.h"
 #include "laser.h"
 #include "flasher.h"
+
+#include "gamepad.h"
+#include "PS4_gamepad.h"
 
 #include "motor_control.h"
 
@@ -91,6 +92,8 @@ const unsigned long PREFS_RESET_DEBOUNCE_MS = 2000;
 
 unsigned long lastTimeStamp = 0;
 
+static PS4Gamepad gamepad;
+
 
 TaskHandle_t xHandle_handleIR,
 	xHandle_toggleOnboardLED,
@@ -138,7 +141,7 @@ static void irDidFire(uint32_t code)
 	lights.onFire();
 }
 
-void notify()
+static void notify(const GamepadState &state)
 {
 	char messageString[200];
 
@@ -183,28 +186,28 @@ void notify()
 					chaosMonkey->Update();
 				} else {
 
-					if (PS4.R1() || PS4.L1()) {
+					if (state.r1_RB || state.l1_LB) {
 						laser.activate();
-						if(PS4.R1()) {
+						if(state.r1_RB) {
 							ir_fire_request(ir_messages[0]);
 						}
 					} else {
 						laser.deactivate();
 					}
 
-					if(PS4.Square()) {
+					if(state.square_X) {
 						currentPrefs = prefsWithTeamColor(currentPrefs, COLOR_PINK);
 						lights.setTeamColor(currentPrefs.color);
-					} else if(PS4.Cross()) {
+					} else if(state.cross_A) {
 						currentPrefs = prefsWithTeamColor(currentPrefs, COLOR_BLUE);
 						lights.setTeamColor(currentPrefs.color);
-					} else if (PS4.Circle()){
+					} else if (state.circle_B){
 						currentPrefs = prefsWithTeamColor(currentPrefs, COLOR_ORANGE);
 						lights.setTeamColor(currentPrefs.color);
-					} else if (PS4.Triangle()) {
+					} else if (state.triangle_Y) {
 						currentPrefs = prefsWithTeamColor(currentPrefs, COLOR_GREEN);
 						lights.setTeamColor(currentPrefs.color);
-					} else if (PS4.L2() && PS4.R2()) {
+					} else if (state.l2_LT && state.r2_RT) {
 						// Reset all user preferences when L2 and R2 are pressed together, with debounce
 						unsigned long now = millis();
 						if (now - lastPrefsResetMillis > PREFS_RESET_DEBOUNCE_MS) {
@@ -226,14 +229,14 @@ void notify()
 							lights.renderFrame();
 							lastPrefsResetMillis = now;
 						}
-					} else if(PS4.Up()) {
+					} else if(state.up) {
 						unsigned long now = millis();
 						if (now - lastDirectionToggleMillis > DIRECTION_DEBOUNCE_MS) {
 							direction = direction * -1;
 							currentPrefs = prefsWithDirection(currentPrefs, direction);
 							lastDirectionToggleMillis = now;
 						}
-					} else if (PS4.Left()) {
+					} else if (state.left) {
 						unsigned long now = millis();
 						if (now - lastJoystickModeToggleMillis > JOYSTICK_MODE_DEBOUNCE_MS) {
 							joystickMode = 2; // two-stick mode
@@ -241,7 +244,7 @@ void notify()
 							Serial.println("Joystick mode set to TWO-STICK (PS.Left)");
 							lastJoystickModeToggleMillis = now;
 						}
-					} else if (PS4.Right()) {
+					} else if (state.right) {
 						unsigned long now = millis();
 						if (now - lastJoystickModeToggleMillis > JOYSTICK_MODE_DEBOUNCE_MS) {
 							joystickMode = 1; // one-stick mode
@@ -252,10 +255,10 @@ void notify()
 					}
 
 					MotorControlInput controlInput;
-					controlInput.lStickX = PS4.LStickX();
-					controlInput.lStickY = PS4.LStickY() * direction;
-					controlInput.rStickX = PS4.RStickX();
-					controlInput.rStickY = PS4.RStickY() * direction;
+					controlInput.lStickX = state.lStickX;
+					controlInput.lStickY = state.lStickY * direction;
+					controlInput.rStickX = state.rStickX;
+					controlInput.rStickY = state.rStickY * direction;
 					controlInput.joystickMode = joystickMode;
 
 					motorControlConfig.trimX = trimX;
@@ -388,11 +391,11 @@ void setup() {
 
 
  	Serial.println("Initialize PS4...");
-	PS4.attach(notify);
-	PS4.attachOnConnect(onConnect);
-	PS4.attachOnDisconnect(onDisConnect);
-	PS4.begin();
-	Serial.println("PS4 initialized");
+	gamepad.attach(notify);
+	gamepad.attachOnConnect(onConnect);
+	gamepad.attachOnDisconnect(onDisConnect);
+	gamepad.begin();
+	Serial.println("Gamepad initialized (PS4 adapter)");
 
 	// Delete "setup and loop" task
 	vTaskDelete(NULL);
