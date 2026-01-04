@@ -26,6 +26,8 @@
 #include "laser.h"
 #include "flasher.h"
 
+#include "motor_control.h"
+
 #include "ir_sensors.h"
 #include "ir_fire.h"
 
@@ -54,11 +56,9 @@ static const int laser_pin = 15;
 // Motor
 int maxSpeed = MOTOR_MAX_SPEED;
 int minSpeed = MOTOR_MIN_SPEED;
-//expo
-const float expo = 0.5;
-const float nullFactor = 157.0;
-const int maxX = 35;
 volatile int trimX = 0;
+
+static MotorControlConfig motorControlConfig;
 
 // Globals
 int led_delay = 50;   // ms
@@ -102,19 +102,6 @@ TaskHandle_t xHandle_handleIR,
 //Classes
 
 // Motors and MotorChaosMonkey are now declared in motors.h / motors.cpp
-
-float withExpo(int x)
-{
-	if(x == 0) {
-		return 1.0;
-	} else {
-		x = abs(x);
-		float n = (float(x)) / nullFactor;
-		float y = expo * pow(n, 3) + ((1.0 - expo) * n);
-		return y;
-	}
-}
-
 
 // Objects
 
@@ -161,8 +148,6 @@ void notify()
 		{
 
 			int rightMotorSpeed, leftMotorSpeed;
-			int stickY, stickX, stickXWithExpo, stickXWithExpoFloat;
-			int rightMotorSpeedRaw, leftMotorSpeedRaw;
 			// Only needed to print the message properly on serial monitor. Else we dont need it.
 			// sprintf(messageString, "%4d,%4d,%4d,%4d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d,%3d",
 			// 		PS4.LStickX(),
@@ -266,75 +251,17 @@ void notify()
 						}
 					}
 
-					// Joystick mapping depending on mode
-					if (joystickMode == 2) {
-						// Two-stick: left Y for forward/back, right X for turning
-						// Use right X for in-place spins when no forward/back input
-						int rawY = PS4.LStickY() * direction;
-						int rawTurn = PS4.RStickX();
-						int rawSpin = PS4.RStickY();
-						// deadzone for deciding "standing still"
-						const int deadzone = 10;
-						if (abs(rawY) < deadzone && abs(rawSpin) < deadzone) {
-							// Standing still: steering stick should rotate in place
-							stickY = 0;
-							stickX = rawTurn;
-						} else {
-							// Moving: left Y + right X mixed driving
-							stickY = rawY;
-							stickX = rawTurn;
-						}
-					} else {
-						// One-stick: right stick controls both as before
-						stickY = PS4.RStickY() * direction;
-						stickX = PS4.RStickX();
-					}
-					float stickXExpo = withExpo(stickX);
-					// Increase rotational authority so sharp turns are possible even at high speed
-					const float turnGain = 5.0; // adjust if needed after testing
-					//stickX = (toggle ? (int)((float)stickX * stickXExpo) : stickX / 3) * -1;
-					stickXWithExpo = constrain(
-						(int)(((float(stickX) * stickXExpo) * turnGain + trimX) * -1),
-						maxX * -1,
-						maxX
-					);
+					MotorControlInput controlInput;
+					controlInput.lStickX = PS4.LStickX();
+					controlInput.lStickY = PS4.LStickY() * direction;
+					controlInput.rStickX = PS4.RStickX();
+					controlInput.rStickY = PS4.RStickY() * direction;
+					controlInput.joystickMode = joystickMode;
 
-					// If we are effectively standing still, boost pivot authority
-					const int standstillThreshold = 10; // same units as stickY
-					if (joystickMode == 2 && abs(stickY) < standstillThreshold) {
-						// Use raw right stick X directly for pivot
-						int rawTurn = PS4.RStickX();          // -127..127
-						const int pivotScale = 1.5;             // increase if still too weak
-						int pivot = constrain(rawTurn * pivotScale, -127, 127);
-
-						rightMotorSpeedRaw =  pivot;
-						leftMotorSpeedRaw  =  -pivot;
-					} else if (joystickMode == 2 && abs(stickY) > 80) {
-						// At high throttle in 2-stick mode, boost turning for tighter curves
-						int boostedTurn = constrain(stickXWithExpo * 2.5, maxX * -1, maxX);
-						rightMotorSpeedRaw = constrain(stickY - boostedTurn, -127, 127);
-						leftMotorSpeedRaw  = constrain(stickY + boostedTurn, -127, 127);
-					} else {
-						rightMotorSpeedRaw = constrain(stickY - stickXWithExpo, -127, 127);
-						leftMotorSpeedRaw  = constrain(stickY + stickXWithExpo, -127, 127);
-					}
-					rightMotorSpeed = map(rightMotorSpeedRaw , -127, 127, minSpeed, maxSpeed); // Left stick  - y axis - forward/backward left motor movement
-					leftMotorSpeed = map(leftMotorSpeedRaw, -127, 127, minSpeed, maxSpeed);   // Right stick - y axis - forward/backward right motor movement
-
-					// Only needed to print the message properly on serial monitor. Else we dont need it.
-					// Serial.printf("StickY: %4d, StickX: %4d, right-raw: %4d, left-raw: %4d, right: %4d, left: %4d \n", stickY, stickX, rightMotorSpeedRaw, leftMotorSpeedRaw, rightMotorSpeed, leftMotorSpeed);
-
-					// original: working
-					//   rightMotorSpeed = map( PS4.RStickY(), -127, 127, -220, 220); //Left stick  - y axis - forward/backward left motor movement
-					//   leftMotorSpeed = map( PS4.LStickY(), -127, 127, -220, 220);  //Right stick - y axis - forward/backward right motor movement
-
-					rightMotorSpeed = constrain(rightMotorSpeed, minSpeed, maxSpeed);
-
-					leftMotorSpeed = constrain(leftMotorSpeed, minSpeed, maxSpeed);
-
-					//   Serial.printf("StickY: %4d, StickX: %4d, StickXExpo: %f, StickXWithExpo: %d, trimX: %d ", stickY, stickX, stickXExpo, stickXWithExpo, trimX);
-					//   Serial.printf("right-raw: %d,  left-raw: %d, right: %d, left: %d \n", rightMotorSpeedRaw, leftMotorSpeedRaw, rightMotorSpeed, leftMotorSpeed);
-
+					motorControlConfig.trimX = trimX;
+					MotorControlOutput cmd = motorControlCompute(controlInput, motorControlConfig);
+					rightMotorSpeed = cmd.rightMotorSpeed;
+					leftMotorSpeed = cmd.leftMotorSpeed;
 					motors->rotateMotor(rightMotorSpeed, leftMotorSpeed);
 				}
 			}
@@ -488,6 +415,7 @@ void setup() {
 	chaosMonkey = new MotorChaosMonkey(motors);
 	motors->setUpPinModes();
 	Serial.println("Motors initialized");
+	motorControlConfig = motorControlDefaultConfig(minSpeed, maxSpeed);
 	// Load user preferences (team color + direction)
 	currentPrefs = prefsLoad();
 	if (currentPrefs.hasColor) {
