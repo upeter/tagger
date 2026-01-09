@@ -19,10 +19,6 @@ void setup()
 {
 	main_control_setup(gamepad);
 
-	gamepad.attachOnConnect(main_control_onConnect);
-	gamepad.attachOnDisconnect(main_control_onDisconnect);
-	gamepad.begin();
-
 	// Delete "setup and loop" task
 	vTaskDelete(NULL);
 }

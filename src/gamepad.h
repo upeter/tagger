@@ -46,6 +46,18 @@ class Gamepad {
 public:
     virtual ~Gamepad() = default;
 
+    // Optional lifecycle hooks used by some controller stacks (e.g. PS4).
+    // Implementations may override these to wire into their underlying library.
+    typedef void (*GamepadLifecycleCallback)();
+
+    // Start the controller stack (if required). Default is a no-op.
+    virtual void begin() {}
+
+    // Connection lifecycle hooks. Default implementation stores callbacks only.
+    // Implementations that can detect connect/disconnect may invoke them.
+    virtual void attachOnConnect(GamepadLifecycleCallback cb) { on_connect_cb_ = cb; }
+    virtual void attachOnDisconnect(GamepadLifecycleCallback cb) { on_disconnect_cb_ = cb; }
+
     // Attach a callback similar to PS4.notify(). Pass nullptr to detach.
     virtual void attach(GamepadNotifyCallback cb) = 0;
 
@@ -56,8 +68,7 @@ public:
     // Implementations parse the report and update internal GamepadState.
     virtual void handleReport(const uint8_t *data, int length) = 0;
 
-    // Stick values as signed integers. Range is implementation-defined,
-    // but for PS4-style controllers typically -127..127.
+    // Stick values as signed axes (range depends on implementation; commonly -127..127).
     virtual int16_t LStickX_LX() const = 0;
     virtual int16_t LStickY_LY() const = 0;
     virtual int16_t RStickX_RX() const = 0;
@@ -94,4 +105,11 @@ public:
 
     // Direct access to the current state if needed
     virtual const GamepadState &state() const = 0;
+
+protected:
+    void notifyConnected() { if (on_connect_cb_ != nullptr) { on_connect_cb_(); } }
+    void notifyDisconnected() { if (on_disconnect_cb_ != nullptr) { on_disconnect_cb_(); } }
+
+    GamepadLifecycleCallback on_connect_cb_ = nullptr;
+    GamepadLifecycleCallback on_disconnect_cb_ = nullptr;
 };

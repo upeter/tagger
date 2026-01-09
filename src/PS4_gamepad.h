@@ -12,10 +12,10 @@ public:
     // PS4 transport lifecycle
     void begin();
 
-    // PS4Controller provides separate connect/disconnect callbacks; expose them
-    // without leaking PS4Controller headers into the rest of the project.
-    void attachOnConnect(void (*cb)());
-    void attachOnDisconnect(void (*cb)());
+    // Connection lifecycle hooks. Stored and invoked via internal trampolines.
+    // (Some controller stacks reset callbacks during begin(), so we re-register.)
+    void attachOnConnect(GamepadLifecycleCallback cb) override;
+    void attachOnDisconnect(GamepadLifecycleCallback cb) override;
 
     // Gamepad
     void attach(GamepadNotifyCallback cb) override;
@@ -56,6 +56,8 @@ public:
 
 private:
     static void ps4NotifyTrampoline();
+    static void ps4ConnectTrampoline();
+    static void ps4DisconnectTrampoline();
 
     void updateFromPS4();
 

@@ -22,17 +22,23 @@ void PS4Gamepad::begin()
 {
     // PS4Controller invokes a no-args function pointer.
     PS4.attach(PS4Gamepad::ps4NotifyTrampoline);
+    PS4.attachOnConnect(PS4Gamepad::ps4ConnectTrampoline);
+    PS4.attachOnDisconnect(PS4Gamepad::ps4DisconnectTrampoline);
     PS4.begin();
 }
 
-void PS4Gamepad::attachOnConnect(void (*cb)())
+void PS4Gamepad::attachOnConnect(GamepadLifecycleCallback cb)
 {
-    PS4.attachOnConnect(cb);
+    on_connect_cb_ = cb;
+    // Re-register our trampoline in case the underlying stack resets callbacks.
+    PS4.attachOnConnect(PS4Gamepad::ps4ConnectTrampoline);
 }
 
-void PS4Gamepad::attachOnDisconnect(void (*cb)())
+void PS4Gamepad::attachOnDisconnect(GamepadLifecycleCallback cb)
 {
-    PS4.attachOnDisconnect(cb);
+    on_disconnect_cb_ = cb;
+    // Re-register our trampoline in case the underlying stack resets callbacks.
+    PS4.attachOnDisconnect(PS4Gamepad::ps4DisconnectTrampoline);
 }
 
 void PS4Gamepad::attach(GamepadNotifyCallback cb)
@@ -64,6 +70,22 @@ void PS4Gamepad::ps4NotifyTrampoline()
     if (g_ps4GamepadInstance->notifyCb_ != nullptr) {
         g_ps4GamepadInstance->notifyCb_(g_ps4GamepadInstance->state_);
     }
+}
+
+void PS4Gamepad::ps4ConnectTrampoline()
+{
+    if (g_ps4GamepadInstance == nullptr) {
+        return;
+    }
+    g_ps4GamepadInstance->notifyConnected();
+}
+
+void PS4Gamepad::ps4DisconnectTrampoline()
+{
+    if (g_ps4GamepadInstance == nullptr) {
+        return;
+    }
+    g_ps4GamepadInstance->notifyDisconnected();
 }
 
 void PS4Gamepad::updateFromPS4()

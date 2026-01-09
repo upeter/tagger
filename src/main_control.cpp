@@ -321,6 +321,10 @@ void main_control_setup(Gamepad &gamepad)
 
     // Gamepad callbacks (transport-specific begin/connect hooks happen in wrapper)
     gamepad.attach(notify);
+	gamepad.attachOnConnect(main_control_onConnect);
+	gamepad.attachOnDisconnect(main_control_onDisconnect);
+	gamepad.begin();
+
 
     Serial.println("Main control initialized");
 }
