@@ -8,11 +8,11 @@ class ActivityLights {
 
 private:
     static const int TEAM_COLOR_START = 0;
-    static const int TEAM_COLOR_END = 47;
-    static const int HEALTH_START = 48;
-    static const int HEALTH_END = 54;
-    static const int AMMUNITION_START = 59;
-    static const int AMMUNITION_END = 65;
+    static const int TEAM_COLOR_END = 43; //43
+    static const int HEALTH_START = 44; //44
+    static const int HEALTH_END = 50; //50
+    static const int AMMUNITION_START = 55; //55
+    static const int AMMUNITION_END = 61; //61
     static const int FIRE_START = HEALTH_START;
     static const int FIRE_END = AMMUNITION_END;
 	static const int SHOTS_PER_LED = 5;
