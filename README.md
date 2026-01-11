@@ -3,7 +3,6 @@
 
 An ESP32-based remote-controlled combat vehicle combining motorized movement with laser tag functionality. The system is controlled via PS4 gamepad over Bluetooth and features infrared shooting capabilities, LED visual feedback, and motor chaos effects when hit.
 
-https://github.com/user-attachments/assets/your-video-id-here
 
 <video src="docs/TankBattleGithub.mp4" controls title="Tank Battle Demo"></video>
 
