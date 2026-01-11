@@ -64,35 +64,14 @@ Use an image search to find the best deal for every component.
 
 ## 3D Model Files
 
-The `3d/` directory contains Fusion 360 (.f3d) design files and STL exports for mounting the ESP32 and components onto the tank chassis:
+The `3d/` directory contains Fusion 360 (.f3d) design files and STL exports for mounting the ESP32 and components onto the tank chassis. Click the STL links to view interactive 3D previews on GitHub.
 
-### Barrel
-Barrel mount for the IR LED transmitter and laser module
-
-![Barrel](3d/Esp32TankBarrel.stl)
-
-**Files**: [Esp32TankBarrel.f3d](3d/Esp32TankBarrel.f3d) | [Esp32TankBarrel.stl](3d/Esp32TankBarrel.stl)
-
-### Chassis Plate
-Main mounting plate for ESP32, motor driver, and electronics
-
-![Chassis Plate](3d/Esp32TankChassisPlate.stl)
-
-**Files**: [Esp32TankChassisPlate.f3d](3d/Esp32TankChassisPlate.f3d) | [Esp32TankChassisPlate.stl](3d/Esp32TankChassisPlate.stl)
-
-### Chassis Plate Rails
-Rail system for attaching components to the chassis plate
-
-![Chassis Plate Rails](3d/Esp32TankChassisPlateRails.stl)
-
-**Files**: [Esp32TankChassisPlateRails.f3d](3d/Esp32TankChassisPlateRails.f3d) | [Esp32TankChassisPlateRails.stl](3d/Esp32TankChassisPlateRails.stl)
-
-### Turret
-Turret assembly for mounting sensors and barrels with rotation capability
-
-![Turret](3d/Esp32TankTurret.stl)
-
-**Files**: [Esp32TankTurret.f3d](3d/Esp32TankTurret.f3d) | [Esp32TankTurret.stl](3d/Esp32TankTurret.stl)
+| Component | Description | Files |
+|---|---|---|
+| **Barrel** | Barrel mount for the IR LED transmitter and laser module | [.f3d](3d/Esp32TankBarrel.f3d) \| [.stl](3d/Esp32TankBarrel.stl) |
+| **Chassis Plate** | Main mounting plate for ESP32, motor driver, and electronics | [.f3d](3d/Esp32TankChassisPlate.f3d) \| [.stl](3d/Esp32TankChassisPlate.stl) |
+| **Chassis Plate Rails** | Rail system for attaching components to the chassis plate | [.f3d](3d/Esp32TankChassisPlateRails.f3d) \| [.stl](3d/Esp32TankChassisPlateRails.stl) |
+| **Turret** | Turret assembly for mounting sensors and barrels with rotation capability | [.f3d](3d/Esp32TankTurret.f3d) \| [.stl](3d/Esp32TankTurret.stl) |
 
 The .f3d files can be opened and modified in Autodesk Fusion 360. The .stl files are ready for 3D printing.
 
