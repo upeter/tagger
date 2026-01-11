@@ -31,8 +31,6 @@ static const uint8_t buf_len = 20;
 
 // Pins
 static const int led_pin = LED_BUILTIN;
-static const int trigger_pin = 25;
-static const int trigger_servo_pin = 18;
 static const int laser_pin = 15;
 
 // Motor
