@@ -1,3 +1,0 @@
-(sym_lib_table
-  (lib (name tagger-rescue)(type Legacy)(uri ${KIPRJMOD}/tagger-rescue.lib)(options "")(descr ""))
-)

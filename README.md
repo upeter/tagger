@@ -1,106 +1,164 @@
-<img src="docs/images/open-lasertag-logo.svg" alt="Open Lasertag Logo" width="100"/>
+# ESP32 RC Combat Vehicle with Laser Tag
+> PS4-controlled robotic battle platform
 
-# Open Laser Tag for my own experiments
-> because Laz00rs!
+An ESP32-based remote-controlled combat vehicle combining motorized movement with laser tag functionality. The system is controlled via PS4 gamepad over Bluetooth and features infrared shooting capabilities, LED visual feedback, and motor chaos effects when hit.
 
-An cheap and DIY open source lasertag system, build with an ESP-32. Lasertag works with infrared. The tagger is build with a infrared LED and a infrared receiver, through which the players can hit each other. This basic functionality is given by the tagger and can be tested with two or more taggers standalone. For more complex games the esp32 is paired via bluetooth with a android app (work in progress). With the android app and a internet connection it will be possible to track statistics during a game and create more complex games e.g. with GPS location data.
-
-This project currently consists of three parts:
-* ESP-32 Firmware (https://github.com/open-laser-tag/tagger-firmware)
-* Android App (https://github.com/open-laser-tag/android-app)
-* node.js Server (https://github.com/open-laser-tag/server)
-
-Videos about Open Laser Tag:
-* Lightning Talk from Chaos Communication Congress 2019, English, multiple other languages available, 2nd last talk:  https://media.ccc.de/v/36c3-10524-lightning_talks_day_2#t=6194
-* Lightning Talk from Chaos Commuinication Camp 2019, German, English dub available, 2nd last talk : https://media.ccc.de/v/Camp2019-10380-lightning_talks#t=10043
-
-
-## Developing
-clone repository with **submodules**
-`git clone git@github.com:open-laser-tag/tagger.git --recurse-submodules`
-There are a lot of options for writing code for the esp32 and for flashing it e.g. Arduino IDE, VScode with Arduino extention, PlattformIO. All possibilities to develop with the esp32 are listed and described [here](https://github.com/espressif/arduino-esp32/).
-
-When uploading to esp32, don't forget to press IO0 on it when it tries to connect to the esp32.
-![Button IO0 on ESP32 board](https://raw.githubusercontent.com/wiki/open-laser-tag/tagger/nodemcu_esp32_buttonio0.jpg)
-
-When you want to keep track of which firmware is flashed on your tagger, you can add [update_git_hash.sh](https://github.com/open-laser-tag/tagger/blob/master/update_git_hash.sh) as git hook to your local git repository. Just add a file named `post-commit` to `.git/hooks/` and add the line `./update_git_hash.sh` or run this script manually before flashing, when you are not using the makefile.
-
-### Arduino IDE
-Prepare your IDE like described and then open
-`tagger.ino`
-
-`chose ESP32 DevModule` as Board
-set partition scheme to `Minimal SPIFFS (Large `
-
-### VScode with Arduino extention
-Your arduino.json could look like this
-```
-{
-    "port": "/dev/ttyUSB0",
-    "board": "esp32:esp32:esp32",
-    "configuration": "PSRAM=disabled,PartitionScheme=min_spiffs,CPUFreq=240,FlashMode=qio,FlashFreq=80,FlashSize=4M,UploadSpeed=921600,DebugLevel=debug",
-    "sketch": "tagger.ino",
-    "output": "./build"
-}
-```
-
-### PlatformIO - VScode
-All necessery informations are already provided in platformio.ini. When your esp32 is connected via USB you can simply press upload.
-
-### PlatformIO - CLI
-When you have installed PlatformIO on your computer, you can just use the provided Makefile in this repository and run
-`make upload` to download all dependencies, build the code, and upload it to your ESP-32 in one step.
-
-### flashing with esptool.py and release binary
-1. install [esptool.py](https://github.com/espressif/esptool) with their instructions
-2. Download both .bin files from newest [release](https://github.com/open-laser-tag/tagger/releases/).
-3. Flash ESP with `esptool.py --chip esp32 --port /dev/ttyUSB0 write_flash 0x10000 tagger_firmware.ino.bin 0x8000 tagger_firmware.ino.partitions.bin` (+ press Button IO0)
-
-## Tagger Hardware
-One tagger is made of: 1x ESP32, 1x IR LED [TSUS 5202](https://www.conrad.de/de/p/vishay-tsus-5202-cqw-13-ir-emitter-950-nm-15-5-mm-radial-bedrahtet-184551.html), 1x IR receiver [TSOP31238](https://www.segor.de/#Q=TSOP31238&M=1), 1x power bank, 1x micro usb cable, some RGB LEDS WS2812 or APA102, 1x [lense](https://www.ebay.de/itm/2x-Cardboard-Virtual-Reality-VR-BiConvex-Lenses-Only-25mm-x-45mm-OF-T-TPI/352821781036?ssPageName=STRK%3AMEBIDX%3AIT&_trksid=p2057872.m2749.l2649), 1x [20 Ohm Resistor](https://www.segor.de/#Q=MF20R-1%2525&M=1), 1x [push button](https://www.segor.de/#Q=TACT6060%252F4%252C3). The price for all this parts is about 10€.
-
-The pins for the wiring can be set or looked up in [tagger.h](https://github.com/open-laser-tag/tagger/blob/dev/src/tagger.h). Or look at the schematics below.
-![Tagger schematics](https://github.com/open-laser-tag/tagger/blob/master/docs/images/schematic.png)
-
-![Tagger fritzing](https://github.com/open-laser-tag/tagger/blob/master/docs/images/tagger_Steckplatine.png)
+[Demo Video](docs/TankBattleGithub.mp4)
 
 ## Features
-#### Bluetooth (BLE)
-When the tagger is connected via BLE, it is reporting the changes of its trigger and the incoming IR. With a connection the tagger doesn't send any infrared by its own and it doesn't control its LEDs. In BLE there can be different services, characteristics and properties on one device, which are building the BLE API. The tagger is running the following characteristics:
 
-| UUID | Name | Properties | Description |
-|---|---|---|---|
-| 08dbb28a-ce2c-467a-9f12-4f15d574a220 | tagger service | all characteristics below | This service contains all tagger Characteristics. |
-| 756ad6a4-2007-4dc4-9173-72dc7d6b2627 | trigger | notify | Get a notify about the trigger trigger status every time it changes. 1 for pressed, 0 for not pressed |
-| a95980fb-4f18-4b2e-a258-81bf77575117 | IR receive | notify | Get a notify about the message when a message is incoming via infrared. |
-| 8b91a0d2-5f7f-49cb-8939-4455d3d24b81 | IR send | write | Send a message to the tagger, to send it via infrared. |
-| 60e44cef-5a43-407b-8d1a-bce02377dcfd | latency | notify | Get a notify about the time between the pressed trigger and the sent infrared. This is just for testing purpose. |
-| 563c139f-3eda-4c88-9fc3-be987038fa6a | version | read | Read the tagger firmware version. |
-| 7a4821c2-80f0-4eba-8070-d659d31e43de | led | write | Tell the tagger the color codes for the RGB LEDs: 0xNNRRGGBBNNRRGGBB... NN (uint8) is the position of the LED. RR (uint8) is red. GG (uint8) is green. BB (uint8) is blue. |
-| eebc6352-2559-40f1-bda8-2715e7c07fbd | OTA | write | Write any data to this characteristic to turn on OTA mode.
+### Core Capabilities
+* **PS4 Gamepad Control**: Wireless Bluetooth control with two joystick modes (one-stick and two-stick driving)
+* **Motor Control**: Dual motor drive with expo curves, deadzone handling, and pivot turning
+* **Laser Tag Combat**: Infrared transmitter/receiver for shooting and detecting hits
+* **Visual Laser**: Physical laser pointer activated with triggers
+* **Activity Lighting**: 67 RGB LEDs (WS2812/NeoPixel) for team colors, hit indicators, and game status
+* **Hit Reactions**: Motor chaos mode activated when hit, disrupting vehicle control temporarily
+* **Team System**: Multiple team color support with in-game color switching
 
-#### Infrared (IR)
-The main communication for a laser tag game is infrared. One IR LED [TSUS 5202](https://www.conrad.de/de/p/vishay-tsus-5202-cqw-13-ir-emitter-950-nm-15-5-mm-radial-bedrahtet-184551.html) is used to send IR. One IR receiver [TSOP31238](https://www.segor.de/#Q=TSOP31238&M=1) is used to detect infrared. Multiple receivers could be probably easily implemented. Both directions are using the [RMT peripheral](https://docs.espressif.com/projects/esp-idf/en/latest/api-reference/peripherals/rmt.html). The infrared protocol can be chosen with `IR_PROTOCOL`, but it has to be the same on all devices. Currently it is NEC.
+### Control Modes
+* **One-stick mode**: Single joystick controls both movement and turning
+* **Two-stick mode**: Left stick for forward/backward, right stick for turning with pivot-in-place and high-speed turn boost
 
-#### Over the air firmware update (OTA)
-When the OTA signal is given via BLE, the tagger reboots in OTA mode. In OTA mode the tagger connects to a wifi given by `OTA_WIFI_SSID` and `OTA_WIWI_PASSWORD`. When no connetion is established in `TIME_WAITING_FOR_CONNECTION_IN_MS` (current: 10s), the tagger reboots again in normal mode. When the connection is established, the taggers firmware can be flashed via the local ip address through wifi.
-More informations: https://docs.espressif.com/projects/esp-idf/en/latest/api-reference/system/ota.html
-When wifi connection is established but no new firmware is coming in, the tagger will stay in this status. When you want to get back to normal mode, just reboot the tagger (cut off power).
+### Game Mechanics
+* Hit detection with cooldown periods
+* Fire rate limiting
+* Team-based combat with color identification
+* Game over state when hit too many times
 
-#### BLE-less mode
-When the tagger is not connected via BLE, it does some things by its own to test some basic functionalities.
+## Hardware Components
 
-| LED | name | description |
-| --- | --- | --- |
-| 0 | tagger status | blinking red - choose your team with the trigger, red - tagger on and no BLE, blue - BLE established |
-| 1 | player status | green - active, turns red for `PLAYER_DOWNTIME_IN_MS` (3s) when infrared message by another team is incoming |
-| 2 | team | shows one of 7 team colors, the team differs the infrared message |
-| 3 | trigger | blinking white when pressing trigger |
+Use an image search to find the best deal for every component.
 
-#### Debugging
-The makros of [esp_log.h](https://docs.espressif.com/projects/esp-idf/en/latest/api-reference/system/log.html) are used to send serial debug messages. When you open a serial monitor and connect the esp32 via USB you should see them. The build flag `DCORE_DEBUG_LEVEL` must be set for this. When you are compiling with plattformio, this is already done in plattformio.ini. In the arduino ide you have to set Tools->Core Debug Level. For the arduino extention in vscode the example above already gives the right flag.
-When you got a JTAG adapter e.g. [jlink](https://www.ebay.de/itm/ARM7-ARM9-ARM11-J-link-V8-Emulator-Cortex-M3-IAR-STM32-JTAG-Schnittstelle-CYED/233389427917?hash=item3657180ccd:g:Ex4AAOSwYIxX-8DR) you can also do inline debugging with the [unified debugger of plattformio](https://docs.platformio.org/en/latest/plus/debugging.html).
+| Component | Description | Image |
+|---|---|---|
+| **ESP32 Development Board** | Main microcontroller - handles all logic, Bluetooth communication, and I/O control | ![ESP32](docs/images/esp32-with-dev-board.jpg) |
+| **Tank Chassis / Motors** | Tank/tracked vehicle chassis with dual DC motors for independent left/right control | ![Tank Chassis](docs/images/tank-chassis.jpg) |
+| **Motor Driver (L298N)** | H-bridge driver board module for controlling motor speed and direction | ![L298N Driver](docs/images/L298N%20Driver%20Board%20Module.jpg) |
+| **IR LED (TSUS 5202)** | 950nm infrared transmitter for shooting opponents | ![IR Emitter](docs/images/IR-emitter.jpg) |
+| **IR Receivers (TSOP31238)** | Two sensors (front & back) to detect incoming IR hits | ![IR Receiver](docs/images/IR-receiver.jpg) ![FPV Standard IR Receiver](docs/images/FPV_Combat_Standard_IR-receiver.jpg)  |
+| **Laser Diode Module** | Visible laser pointer for aiming (GPIO 15) | ![Laser](docs/images/laser.jpg) |
+| **LED Strip (WS2812)** | 67 RGB addressable LEDs for team colors and status indicators (Search for: 5mm WS2812B 2020SMD RGBIC LED-strip Ultra-small WS2812 individual addressable DC5V) | ![LED Strip](docs/images/LED-Strip.png) |
+| **FPV Camera + TX** | Piggyback Micro AIO FPV-camera 5.8G 40CH OSD SmartAudio 25-400 mW 600TVL NTSC 120 F. Important: the FPV TX must support 25mW, everything higher won't work in a living room with multiple FPV TX's. So use 25mW only. | ![FPV Camera + TX](docs/images/fpv-camera-with-tx.jpg) |
+| **PS4 DualShock Controller** | Wireless Bluetooth gamepad for vehicle and combat control | ![PS4](docs/images/ps4.jpg) |
+| **2S LiPo Battery** | 7.4V 1200mAh - 1800mAh battery (1600 mAh gives you ~30 min runtime) | ![2s](docs/images/Lipo-2s.jpg)  |
 
-## Licensing
+### Pin Configuration
+| Component | GPIO Pin |
+|---|---|
+| LED Strip Data | 13 |
+| IR Transmit (Fire) | 2 |
+| IR Receiver Front | 27 |
+| IR Receiver Back | 26 |
+| Laser | 15 |
+| **Right Motor** | |
+| Right Motor Enable | 22 |
+| Right Motor Pin 1 | 16 |
+| Right Motor Pin 2 | 17 |
+| **Left Motor** | |
+| Left Motor Enable | 23 |
+| Left Motor Pin 1 | 18 |
+| Left Motor Pin 2 | 19 |
 
-This project is licensed under the terms of the GPL-3.0.
+## Development
+
+### VS Code with PlatformIO (Recommended)
+This project is set up for VS Code with the PlatformIO extension.
+
+**Setup:**
+1. Install [VS Code](https://code.visualstudio.com/)
+2. Install the PlatformIO IDE extension from the VS Code marketplace
+3. Open this project folder in VS Code
+4. PlatformIO will automatically detect `platformio.ini` and install dependencies
+
+**Building and uploading:**
+- Click the PlatformIO toolbar icon (checkmark) to build
+- Click the upload icon (arrow) to flash to ESP32
+- Or use the command palette: `PlatformIO: Upload`
+
+### PlatformIO CLI
+If you prefer the command line:
+
+**Building and uploading:**
+```bash
+platformio run --target upload
+```
+
+**Monitoring serial output:**
+```bash
+platformio device monitor
+```
+
+### Dependencies
+The project uses the following libraries (auto-installed by PlatformIO):
+* NeoPixelBus - Advanced LED control
+* PS4_Controller_Host - PS4 gamepad support
+
+### PS4 Controller Setup
+1. Find your ESP32's MAC address (use included `showMacAddress.cpp` utility)
+2. Pair your PS4 controller using a PC/smartphone app (search for (SixAxisPairTool)[https://docs.totemmaker.net/assets/files/sixaxis/SixaxisPairToolSetup-0.3.1.exe] must have sha256 hash: b274dfc581adbf50787b6498c2e6878447e2ebe0be78c296795295b91991c2f6)
+3. Set the controller's master address to your ESP32's MAC address
+4. Power on the controller - it should connect automatically
+
+## PS4 Gamepad Controls
+
+### Movement
+* **Right Stick** (one-stick mode): Forward/backward/left/right - combined movement
+* **Left Stick** (two-stick mode): Forward/backward movement
+* **Right Stick** (two-stick mode): Turning and pivot-in-place
+
+### Combat
+* **R1 / RB**: Fire infrared shot + activate laser
+* **L1 / LB**: Activate laser without firing
+
+### Team Selection
+* **Square / X**: Pink team
+* **Cross / A**: Blue team  
+* **Circle / B**: Orange team
+* **Triangle / Y**: Green team
+
+### Settings
+* **D-Pad Up**: Toggle joystick mode (one-stick ↔ two-stick)
+* **Share**: Reset preferences to defaults
+* **L2 + R2** (held together): In-game preferences reset
+
+## Architecture
+
+### Software Components
+* **main_control**: Core game logic and FreeRTOS task management
+* **PS4_gamepad**: PS4 controller interface abstraction
+* **motor_control**: Dual motor mixing with expo curves and driving modes
+* **motors**: Low-level motor driver interface
+* **ir_fire / ir_sensors**: Infrared transmission and reception using ESP32 RMT peripheral
+* **laser**: Laser pointer control
+* **activity_lights**: LED patterns for game state feedback
+* **flasher**: LED flashing effects
+* **colors**: Team color definitions
+* **prefs**: Persistent preferences storage (EEPROM)
+
+The firmware uses FreeRTOS tasks for concurrent handling of:
+* IR message reception
+* LED animations
+* Motor control
+* Gamepad input processing
+
+## Technical Details
+
+### Infrared Protocol
+Uses ESP32's RMT (Remote Control) peripheral for precise IR timing. Protocol details in `src/IR32/` library. The system transmits team-specific codes to differentiate between friendly and enemy fire.
+
+### Motor Chaos Mode
+When hit, the `MotorChaosMonkey` class temporarily interferes with motor control, creating erratic movement to simulate being "stunned" in combat.
+
+### Preferences Storage
+Game settings and team colors are persisted to EEPROM and loaded on boot.
+
+## Debugging
+Serial debugging at 115200 baud. Build flags in [platformio.ini](platformio.ini) enable ESP_LOG output:
+```
+-DCORE_DEBUG_LEVEL=4
+-D LOG_LOCAL_LEVEL=ESP_LOG_DEBUG
+```
+
+## License
+GPL-3.0 - See [LICENSE](LICENSE)
